@@ -178,7 +178,7 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
   const rng = mulberry32((Date.now() ^ (style.arena * 7919)) >>> 0);
   mkdirSync(LOGS, { recursive: true });
   const csv = resolve(LOGS, `${style.id}.csv`);
-  if (!existsSync(csv)) appendFileSync(csv, "date,generation,games,meanFitness,winRateVsHeuristic,preshotsPerGame,gamesPerSecond\n");
+  if (!existsSync(csv)) appendFileSync(csv, "date,generation,games,meanFitness,winRateVsHeuristic,preshotsPerGame,anticipationsPerGame,gamesPerSecond\n");
 
   const pickOpp = (): number => {
     const r = rng();
@@ -251,6 +251,7 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
     gamesThisRun += played;
     const meanFit = fit.reduce((s, f) => s + f, 0) / fit.length;
     const preshots = results.reduce((s, r) => s + r.preshots, 0) / played;
+    const anticipations = results.reduce((s, r) => s + r.anticipations, 0) / played;
 
     if (generations % 20 === 0) {
       snapshots.push({ kind: "brain", params: Float32Array.from(theta), layers, deck: style.deck });
@@ -274,7 +275,7 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
         saveBrain(brain);
       }
       const gps = gamesThisRun / ((now - start) / 1000);
-      appendFileSync(csv, `${brain.meta.updatedAt},${generations},${totalGames},${meanFit.toFixed(4)},${lastWinRate.toFixed(3)},${preshots.toFixed(3)},${gps.toFixed(1)}\n`);
+      appendFileSync(csv, `${brain.meta.updatedAt},${generations},${totalGames},${meanFit.toFixed(4)},${lastWinRate.toFixed(3)},${preshots.toFixed(3)},${anticipations.toFixed(3)},${gps.toFixed(1)}\n`);
       console.log(
         `  💾 test : ${(lastWinRate * 100).toFixed(1)} % de victoires contre le bot classique` +
           (improved ? " · nouveau meilleur, publié dans server/brains" : ` · meilleur : ${(bestWinRate * 100).toFixed(1)} %`),
@@ -286,7 +287,7 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
       const left = Math.max(0, deadline - now);
       console.log(
         `[${style.id}] gén ${generations} · ${totalGames.toLocaleString("fr-FR")} parties · ${gps.toFixed(0)} parties/s · ` +
-          `fitness ${meanFit.toFixed(3)} · préshots/partie ${preshots.toFixed(2)} · dernier test ${(lastWinRate * 100).toFixed(0)} % · reste ${fmtTime(left)}`,
+          `fitness ${meanFit.toFixed(3)} · préshots ${preshots.toFixed(2)} · anticipations ${anticipations.toFixed(2)} par partie · dernier test ${(lastWinRate * 100).toFixed(0)} % · reste ${fmtTime(left)}`,
       );
     }
   }

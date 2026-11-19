@@ -55,7 +55,8 @@ function laneAnchors(i: number): Anchor[] {
 export const ANCHORS: Anchor[] = [
   ...laneAnchors(0),
   ...laneAnchors(1),
-  { name: "centre", resolve: (c) => [ARENA_W / 2, c.abs(8.5)] },
+  { name: "aimant côté G", resolve: (c) => [ARENA_W / 2 - 0.5, c.abs(9.5)] },
+  { name: "aimant côté D", resolve: (c) => [ARENA_W / 2 + 0.5, c.abs(9.5)] },
   { name: "devant le roi", resolve: (c) => [ARENA_W / 2, c.abs(5.5)] },
   {
     name: "intercepter",
@@ -92,17 +93,32 @@ export function describeAction(a: number): string {
 
 const ZONES = 4;
 const PER_ZONE = 5;
-export const INPUT_SIZE = 2 * ZONES * PER_ZONE + 8 + 5 + AI_CARDS.length * 3 + 6 + 3;
+export const INPUT_SIZE = 2 * ZONES * PER_ZONE + 8 + 5 + AI_CARDS.length * 3 + 6 + 3 + AI_CARDS.length * 2;
 
 export interface Memory {
   lastEnemyCard: CardId | null;
   lastEnemyLy: number;
   lastEnemyLane: number;
   lastEnemyTime: number;
+  lastEnemyPlayer: string | null;
+  enemyPlays: Map<string, CardId[]>;
 }
 
 export function newMemory(): Memory {
-  return { lastEnemyCard: null, lastEnemyLy: 0, lastEnemyLane: 0, lastEnemyTime: -99 };
+  return { lastEnemyCard: null, lastEnemyLy: 0, lastEnemyLane: 0, lastEnemyTime: -99, lastEnemyPlayer: null, enemyPlays: new Map() };
+}
+
+export function enemyCycle(mem: Memory): Map<CardId, "inHand" | "cycling"> {
+  const out = new Map<CardId, "inHand" | "cycling">();
+  const plays = mem.lastEnemyPlayer ? mem.enemyPlays.get(mem.lastEnemyPlayer) : undefined;
+  if (!plays) return out;
+  for (let i = plays.length - 1; i >= 0; i--) {
+    const card = plays[i];
+    if (out.has(card)) continue;
+    const since = plays.length - 1 - i;
+    out.set(card, since >= 4 ? "inHand" : "cycling");
+  }
+  return out;
 }
 
 function ctxFor(sim: Sim, p: SimPlayer): Ctx {
@@ -179,6 +195,13 @@ export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array): 
   } else {
     o += 3;
   }
+  const cycle = enemyCycle(mem);
+  for (let i = 0; i < AI_CARDS.length; i++) {
+    const st = cycle.get(AI_CARDS[i]);
+    out[o + i * 2] = st ? 1 : 0;
+    out[o + i * 2 + 1] = st === "inHand" ? 1 : 0;
+  }
+  o += AI_CARDS.length * 2;
   return out;
 }
 
@@ -189,6 +212,11 @@ export function observeEvents(sim: Sim, p: SimPlayer, mem: Memory) {
     mem.lastEnemyLy = p.team === 0 ? ev.y : ARENA_H - ev.y;
     mem.lastEnemyLane = ev.x < ARENA_W / 2 ? 0 : 1;
     mem.lastEnemyTime = sim.time;
+    mem.lastEnemyPlayer = ev.by;
+    const list = mem.enemyPlays.get(ev.by) ?? [];
+    list.push(ev.c);
+    if (list.length > 40) list.splice(0, list.length - 40);
+    mem.enemyPlays.set(ev.by, list);
   }
 }
 
@@ -276,6 +304,7 @@ export class NeuralBot {
   private mem = newMemory();
   private timer: number;
   lastAction = 0;
+  onPlay?: (action: number) => void;
 
   constructor(
     private sim: Sim,
@@ -301,7 +330,7 @@ export class NeuralBot {
     this.lastAction = action;
     if (action === 0) return;
     const r = resolveAction(this.sim, p, action);
-    if (r) this.sim.play(p.id, r.card, r.x, r.y);
+    if (r && !this.sim.play(p.id, r.card, r.x, r.y)) this.onPlay?.(action);
   }
 
   private decide(p: SimPlayer): number {

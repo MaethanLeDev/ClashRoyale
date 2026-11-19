@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_DECK, type CardId } from "../shared/cards";
 import { AI_CARDS, ACTION_COUNT, INPUT_SIZE, NeuralBot, paramCount, type BrainFile } from "../shared/ai/brain";
 import { Bot } from "../shared/ai/heuristic";
-import { arenaProgress, elixirBonus, heuristicSlowness, neuralDifficulty, styleForArena } from "../shared/ai/styles";
+import { arenaProgress, heuristicSlowness, neuralDifficulty, styleForArena } from "../shared/ai/styles";
 import type { Sim } from "../shared/sim";
 
 const DIR = resolve(fileURLToPath(new URL(".", import.meta.url)), "brains");
@@ -51,8 +51,6 @@ export function createBot(sim: Sim, playerId: string, arena: number, trophies: n
   const style = styleForArena(arena);
   const entry = style ? load(style.id) : null;
   if (!entry) return new Bot(sim, playerId, heuristicSlowness(progress));
-  const p = sim.players.get(playerId);
-  if (p) p.elixirRate = elixirBonus(arena, progress);
   return new NeuralBot(sim, playerId, entry.params, entry.brain.layers, neuralDifficulty(arena, progress));
 }
 

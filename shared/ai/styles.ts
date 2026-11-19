@@ -9,6 +9,7 @@ export interface RewardWeights {
   towerTaken: number;
   trade: number;
   preshot: number;
+  anticipation: number;
   aggression: number;
 }
 
@@ -29,7 +30,7 @@ export const STYLES: StyleDef[] = [
     label: "Le Rusheur",
     description: "Pousse sans arrêt au pont et cherche les tours le plus vite possible.",
     deck: ["tarit", "natis", "nazar", "midas", "goutier", "valere", "tordeux", "niels"],
-    reward: { win: 1, crowns: 0.4, towerDealt: 1.2, towerTaken: 0.3, trade: 0.1, preshot: 0, aggression: 0.015 },
+    reward: { win: 1, crowns: 0.4, towerDealt: 1.2, towerTaken: 0.3, trade: 0.1, preshot: 0, anticipation: 0, aggression: 0.015 },
     minutesPerNight: 75,
   },
   {
@@ -38,25 +39,25 @@ export const STYLES: StyleDef[] = [
     label: "Le Mur",
     description: "Défend tout, gagne les échanges de caféine et punit en contre-attaque.",
     deck: ["imad", "valere", "tordeux", "goutier", "niels", "natis", "nazar", "samy"],
-    reward: { win: 1, crowns: 0.2, towerDealt: 0.3, towerTaken: 1.2, trade: 0.6, preshot: 0, aggression: 0 },
+    reward: { win: 1, crowns: 0.2, towerDealt: 0.3, towerTaken: 1.2, trade: 0.6, preshot: 0, anticipation: 0.03, aggression: 0 },
     minutesPerNight: 75,
   },
   {
     id: "preshot",
     arena: 3,
     label: "Le Devin",
-    description: "Anticipe tes poses : son Papy Niels tombe pile là où tu vas jouer.",
+    description: "Compte ton cycle et ta caféine, et pose sa défense ou son Papy Niels avant même que tu joues.",
     deck: ["niels", "midas", "nazar", "goutier", "valere", "tordeux", "imad", "tarit"],
-    reward: { win: 1, crowns: 0.2, towerDealt: 0.4, towerTaken: 0.4, trade: 0.2, preshot: 0.18, aggression: 0 },
+    reward: { win: 1, crowns: 0.2, towerDealt: 0.4, towerTaken: 0.4, trade: 0.2, preshot: 0.15, anticipation: 0.12, aggression: 0 },
     minutesPerNight: 120,
   },
   {
     id: "boss",
     arena: 4,
     label: "Le Boss du Volcan",
-    description: "Entraîné contre tous les autres. Aucune pitié, et il triche un peu sur la caféine.",
+    description: "Entraîné plus longtemps que tous les autres, contre tous les autres. Aucune pitié.",
     deck: ["samy", "valere", "tordeux", "niels", "nazar", "goutier", "natis", "tarit"],
-    reward: { win: 1.5, crowns: 0.5, towerDealt: 0.3, towerTaken: 0.3, trade: 0.1, preshot: 0.03, aggression: 0 },
+    reward: { win: 1.5, crowns: 0.5, towerDealt: 0.3, towerTaken: 0.3, trade: 0.1, preshot: 0.03, anticipation: 0.03, aggression: 0 },
     minutesPerNight: 210,
   },
 ];
@@ -81,10 +82,6 @@ export function neuralDifficulty(arena: number, progress: number): NeuralOptions
   const base = arena / 4;
   const d = Math.min(1, base * 0.6 + progress * 0.4);
   return { think: lerp(0.95, 0.35, d), epsilon: lerp(0.22, 0.03, d), temperature: lerp(0.5, 0.05, d) };
-}
-
-export function elixirBonus(arena: number, progress: number): number {
-  return arena >= 4 ? 1 + 0.15 * progress : 1;
 }
 
 export function heuristicSlowness(progress: number): number {

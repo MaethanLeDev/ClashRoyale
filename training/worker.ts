@@ -24,6 +24,7 @@ export interface WorkerOut {
   wins: number;
   games: number;
   preshots: number;
+  anticipations: number;
 }
 
 let layers: number[] = [];
@@ -77,13 +78,15 @@ parentPort?.on("message", (msg: WorkerIn) => {
   let fitness = 0;
   let wins = 0;
   let preshots = 0;
+  let anticipations = 0;
   for (const g of msg.games) {
     const opp = contender(league[g.opp] ?? { kind: "heuristic" });
     const s = g.side === 0 ? playMatch(me, opp, g.seed) : playMatch(opp, me, g.seed);
     fitness += fitnessFor(s, g.side, reward);
     if (s.winner === g.side) wins++;
     preshots += s.preshots[g.side];
+    anticipations += s.anticipations[g.side];
   }
-  const out: WorkerOut = { type: "result", id: msg.id, fitness: fitness / msg.games.length, wins, games: msg.games.length, preshots };
+  const out: WorkerOut = { type: "result", id: msg.id, fitness: fitness / msg.games.length, wins, games: msg.games.length, preshots, anticipations };
   parentPort!.postMessage(out);
 });

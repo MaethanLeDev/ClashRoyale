@@ -14,7 +14,6 @@ export interface SimPlayer {
   team: Team;
   bot: boolean;
   elixir: number;
-  elixirRate: number;
   hand: CardId[];
   queue: CardId[];
 }
@@ -134,7 +133,7 @@ export class Sim {
   addPlayer(id: string, name: string, team: Team, deck: CardId[], bot = false): SimPlayer {
     const order = shuffle(deck);
     const p: SimPlayer = {
-      id, name, team, bot, elixir: START_ELIXIR, elixirRate: 1,
+      id, name, team, bot, elixir: START_ELIXIR,
       hand: order.slice(0, HAND_SIZE), queue: order.slice(HAND_SIZE),
     };
     this.players.set(id, p);
@@ -264,7 +263,7 @@ export class Sim {
     this.timeLeft -= dt;
 
     const rate = ELIXIR_PER_SEC * (this.doubleElixir ? 2 : 1);
-    for (const p of this.players.values()) p.elixir = Math.min(MAX_ELIXIR, p.elixir + rate * p.elixirRate * dt);
+    for (const p of this.players.values()) p.elixir = Math.min(MAX_ELIXIR, p.elixir + rate * dt);
 
     this.updateSpells(dt);
     this.updateUnits(dt);

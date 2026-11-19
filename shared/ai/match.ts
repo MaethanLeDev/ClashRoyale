@@ -1,5 +1,5 @@
 import { CARDS, DEFAULT_DECK, type CardId } from "../cards";
-import { ARENA_H, DT } from "../constants";
+import { ARENA_H, ARENA_W, DT, RIVER_Y } from "../constants";
 import type { Team } from "../protocol";
 import { Sim } from "../sim";
 import { NeuralBot, type NeuralOptions } from "./brain";
@@ -16,6 +16,7 @@ export interface MatchStats {
   towerLost: [number, number];
   elixirLost: [number, number];
   preshots: [number, number];
+  anticipations: [number, number];
   aggression: [number, number];
   time: number;
 }
@@ -33,7 +34,7 @@ export function mulberry32(seed: number): () => number {
 
 const TRAIN_OPTS: NeuralOptions = { think: 0.35, epsilon: 0, temperature: 0 };
 
-export function playMatch(a: Contender, b: Contender, seed: number): MatchStats {
+export function playMatch(a: Contender, b: Contender, seed: number, trace?: (team: Team, action: number) => void): MatchStats {
   const realRandom = Math.random;
   const rng = mulberry32(seed);
   Math.random = rng;
@@ -48,13 +49,16 @@ export function playMatch(a: Contender, b: Contender, seed: number): MatchStats 
         return new Bot(sim, id, c.slowness ?? 0);
       }
       sim.addPlayer(id, id, team, c.deck, true);
-      return new NeuralBot(sim, id, c.params, c.layers, c.opts ?? TRAIN_OPTS, rng);
+      const bot = new NeuralBot(sim, id, c.params, c.layers, c.opts ?? TRAIN_OPTS, rng);
+      if (trace) bot.onPlay = (action) => trace(team, action);
+      return bot;
     });
     const spawned = new Map<number, number>();
     const stats: MatchStats = {
-      winner: -1, crowns: [0, 0], towerLost: [0, 0], elixirLost: [0, 0], preshots: [0, 0], aggression: [0, 0], time: 0,
+      winner: -1, crowns: [0, 0], towerLost: [0, 0], elixirLost: [0, 0], preshots: [0, 0], anticipations: [0, 0], aggression: [0, 0], time: 0,
     };
     const spellCasts: { tm: Team; land: number }[] = [];
+    let pending: { tm: Team; lane: number; t: number }[] = [];
     let ticks = 0;
     while (sim.phase !== "ended" && ticks < 20 * 300) {
       sim.step(DT);
@@ -69,6 +73,20 @@ export function playMatch(a: Contender, b: Contender, seed: number): MatchStats 
           const ly = ev.tm === 0 ? ev.y : ARENA_H - ev.y;
           if (ly >= 13 && card.kind !== "spell") stats.aggression[ev.tm] += 1;
           if (card.kind === "spell" && card.spell) spellCasts.push({ tm: ev.tm, land: sim.time + card.spell.delay });
+          const lane = ev.x < ARENA_W / 2 ? 0 : 1;
+          if (card.kind !== "spell" && !card.deployAnywhere) {
+            const enemyTeam: Team = ev.tm === 0 ? 1 : 0;
+            const hit = pending.find((p) => p.tm === enemyTeam && p.lane === lane && sim.time - p.t <= 4);
+            if (hit) {
+              stats.anticipations[enemyTeam] += 1;
+              pending = pending.filter((p) => p !== hit);
+            }
+            if (ly < RIVER_Y - 1) {
+              const calm = !sim.units.some((u) => u.team !== ev.tm && (u.x < ARENA_W / 2 ? 0 : 1) === lane && (ev.tm === 0 ? u.y : ARENA_H - u.y) < RIVER_Y + 1);
+              if (calm) pending.push({ tm: ev.tm, lane, t: sim.time });
+            }
+          }
+          pending = pending.filter((p) => sim.time - p.t <= 4);
         } else if (ev.e === "hit" && ev.k === "spell") {
           const born = spawned.get(ev.id);
           const cast = spellCasts.find((s) => Math.abs(s.land - sim.time) < 0.11);
@@ -102,6 +120,7 @@ export function fitnessFor(s: MatchStats, me: Team, w: RewardWeights): number {
   f -= s.towerLost[me] * w.towerTaken;
   f += Math.max(-1, Math.min(1, (s.elixirLost[them] - s.elixirLost[me]) / 30)) * w.trade;
   f += Math.min(8, s.preshots[me]) * w.preshot;
+  f += Math.min(8, s.anticipations[me]) * w.anticipation;
   f += Math.min(30, s.aggression[me]) * w.aggression;
   return f;
 }

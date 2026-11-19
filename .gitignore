@@ -4,3 +4,4 @@ dist
 data
 training/checkpoints
 training/logs
+training/rapport.md

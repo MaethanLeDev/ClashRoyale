@@ -6,10 +6,10 @@ Les bots des arènes 2 à 5 sont des petits réseaux de neurones entraînés en 
 |---|---|---|
 | 2 · Plage du Lac | Le Rusheur | dégâts aux tours, jeu au pont |
 | 3 · Station des Partiels | Le Mur | défense, échanges de caféine gagnants |
-| 4 · Soirée BDE | Le Devin | préshots : Papy Niels qui touche des troupes posées il y a moins de 2,5 s |
+| 4 · Soirée BDE | Le Devin | préshots : Papy Niels qui touche des troupes posées il y a moins de 2,5 s, et défenses posées dans un couloir calme juste avant que tu y lances une poussée |
 | 5 · Volcan des Rattrapages | Le Boss | la victoire avant tout, entraîné contre tous les autres |
 
-La difficulté monte avec les trophées dans chaque arène : temps de réaction plus court, moins d'erreurs volontaires. Le Boss recharge en plus sa caféine jusqu'à 15 % plus vite en haut de l'arène 5.
+Il y a donc **un cerveau par arène**, chacun avec son style. Ensuite, **la difficulté monte avec les trophées** dans chaque arène : temps de réaction plus court, moins d'erreurs volontaires (en bas de l'arène le bot est volontairement bridé, en haut il joue à fond). Le Boss ne triche pas : il est juste entraîné plus longtemps, contre tous les autres.
 
 ## Lancer la nuit d'entraînement (Mac)
 
@@ -42,6 +42,21 @@ npm run train:night -- --hours 10               # nuit plus longue
 npm run train -- --style preshot --fresh        # repartir de zéro
 ```
 
+## Le rapport du matin
+
+```bash
+npm run train:report
+```
+
+Il affiche (et écrit dans `training/rapport.md`) :
+
+- le résumé de chaque cerveau : parties jouées, meilleur pourcentage de victoires ;
+- la courbe de progression de la nuit ;
+- un tournoi entre tous les bots et le bot classique ;
+- les cartes et les placements favoris de chaque bot, dont le pourcentage de QG d'Imad posés en position d'aimant.
+
+`npm run train:report -- --games 100` pour un tournoi plus précis (plus long).
+
 ## Ce que ça produit
 
 Un fichier JSON par bot dans `server/brains/` (`rush.json`, `defense.json`, `preshot.json`, `boss.json`). Chaque fichier contient environ 17 000 nombres : les poids du réseau de neurones, plus le deck du bot et quelques statistiques. Le serveur du jeu les recharge tout seul quand ils changent, sans redémarrer.
@@ -52,11 +67,11 @@ L'historique de chaque entraînement est dans `training/logs/<style>.csv`, à ou
 
 ## Comment ça marche
 
-**Ce que le bot voit** (environ 100 nombres, 3 fois par seconde) : les PV et la puissance des troupes dans 8 zones de l'arène, les PV des tours, sa caféine et celle de l'adversaire, les cartes de sa main, la dernière carte posée par l'adversaire et où, la troupe ennemie la plus avancée.
+**Ce que le bot voit** (environ 120 nombres, 3 fois par seconde) : les PV et la puissance des troupes dans 8 zones de l'arène, les PV des tours, sa caféine et celle de l'adversaire, les cartes de sa main, la dernière carte posée par l'adversaire et où, la troupe ennemie la plus avancée, et **le cycle de l'adversaire** : quelles cartes il a déjà montrées, et lesquelles sont revenues dans sa main (une carte revient après 4 autres poses).
 
-**Ce qu'il peut faire** : attendre, ou poser une carte de sa main à l'un des 16 points clés (derrière une tour, au pont, au pont adverse, sur la tour adverse, sur la menace, etc.). Soit 161 actions possibles.
+**Ce qu'il peut faire** : attendre, ou poser une carte de sa main à l'un des 17 points clés (derrière une tour, au pont, au pont adverse, sur la tour adverse, sur la menace, les deux positions « aimant » au centre pour dévier les troupes qui visent les bâtiments entre les deux tours, etc.). Soit 171 actions possibles.
 
-**Son cerveau** : un réseau de neurones de 3 couches (100 → 64 → 48 → 161). Il donne une note à chaque action, et le bot joue la meilleure.
+**Son cerveau** : un réseau de neurones de 3 couches (120 → 64 → 48 → 171). Il donne une note à chaque action, et le bot joue la meilleure.
 
 **L'apprentissage** : les stratégies d'évolution (*Evolution Strategies*, la méthode présentée par OpenAI en 2017). À chaque génération :
 
