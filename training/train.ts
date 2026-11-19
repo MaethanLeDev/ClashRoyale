@@ -204,6 +204,14 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
     return wins / total;
   };
 
+  if (bestWinRate >= 0 && published) {
+    const current = theta;
+    theta = Float32Array.from(published.params);
+    bestWinRate = await evaluate(Math.max(192, pool.workers.length * 16));
+    theta = current;
+    console.log(`Cerveau publié réévalué : ${(bestWinRate * 100).toFixed(1)} % de victoires, c'est le record à battre.\n`);
+  }
+
   let lastLog = 0;
   let lastSave = Date.now();
   let gamesThisRun = 0;
