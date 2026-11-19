@@ -3,7 +3,7 @@ import { CARDS, type CardDef, type CardId } from "../../../shared/cards";
 import { ARENA_H, ARENA_W, RIVER_HALF, RIVER_Y } from "../../../shared/constants";
 import type { GameEvent, StateMsg, Team } from "../../../shared/protocol";
 import { UNIT_STATE } from "../../../shared/protocol";
-import { canDeployAt, POCKET_DEPTH, pocketOpen, snapTile } from "../../../shared/rules";
+import { nearestDeployable, POCKET_DEPTH, pocketOpen } from "../../../shared/rules";
 import { buildArena, toArena, toWorld, type Arena } from "./arena";
 import { Fx } from "./fx";
 import {
@@ -891,35 +891,32 @@ export class GameView {
     const hit = new THREE.Vector3();
     if (!this.raycaster.ray.intersectPlane(this.groundPlane, hit)) return null;
     const a = toArena(hit);
-    if (a.x < -1 || a.x > ARENA_W + 1 || a.y < -1 || a.y > ARENA_H + 1) return null;
-    return { x: snapTile(a.x, ARENA_W), y: snapTile(a.y, ARENA_H) };
+    if (a.x < -6 || a.x > ARENA_W + 6 || a.y < -6 || a.y > ARENA_H + 6) return null;
+    return { x: Math.min(ARENA_W, Math.max(0, a.x)), y: Math.min(ARENA_H, Math.max(0, a.y)) };
   }
 
-  private validAt(card: CardDef, x: number, y: number): boolean {
+  private placementFor(card: CardDef, raw: { x: number; y: number }): { x: number; y: number } | null {
     const s = this.state;
-    if (!s) return false;
+    if (!s) return null;
     const towers = s.towers.map((t) => ({ team: t.tm, kind: t.k, x: t.x, y: t.y, alive: t.hp > 0 }));
     const buildings = s.units
       .filter((u) => CARDS[u.c].kind === "building")
       .map((u) => ({ x: u.x, y: u.y, radius: CARDS[u.c].unit!.radius }));
-    return canDeployAt(this.opts.team, card, x, y, towers, buildings);
+    return nearestDeployable(this.opts.team, card, raw.x, raw.y, towers, buildings);
   }
 
   private tryPlay(clientX: number, clientY: number) {
     const card = this.selected ? CARDS[this.selected] : null;
     const s = this.state;
     if (!card || !s) return;
-    const p = this.pick(clientX, clientY);
+    const raw = this.pick(clientX, clientY);
+    const p = raw ? this.placementFor(card, raw) : null;
     if (!p) {
       this.clearSelection();
       return;
     }
     if (s.phase !== "playing" && s.phase !== "overtime") {
       this.opts.onToast("La partie n'a pas commencé");
-      return;
-    }
-    if (!this.validAt(card, p.x, p.y)) {
-      this.opts.onToast("Placement interdit ici");
       return;
     }
     if (s.el < card.cost) {
@@ -943,7 +940,8 @@ export class GameView {
       this.ghost.visible = false;
       return;
     }
-    const p = this.pick(this.pointer.x, this.pointer.y);
+    const raw = this.pick(this.pointer.x, this.pointer.y);
+    const p = raw ? this.placementFor(card, raw) : null;
     if (!p) {
       this.ghost.visible = false;
       return;
@@ -960,7 +958,7 @@ export class GameView {
           : Math.max(0.6, card.unit!.radius * 1.2);
     this.ghostFill.scale.setScalar(r);
     this.ghostRing.scale.setScalar(r);
-    const ok = this.validAt(card, p.x, p.y) && (this.state?.el ?? 0) >= card.cost;
+    const ok = (this.state?.el ?? 0) >= card.cost;
     const col = ok ? 0xffffff : 0xff4d4d;
     (this.ghostRing.material as THREE.MeshBasicMaterial).color.setHex(col);
     (this.ghostFill.material as THREE.MeshBasicMaterial).color.setHex(col);

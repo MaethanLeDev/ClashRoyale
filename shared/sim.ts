@@ -310,16 +310,18 @@ export class Sim {
     for (const v of this.units) {
       if (v.team === u.team || v.hp <= 0) continue;
       if (s.targetsBuildingsOnly && !v.building) continue;
-      const d = this.edgeDist(u, v);
-      if (d <= s.sight && d < bestD) {
+      if (this.edgeDist(u, v) > s.sight) continue;
+      const d = Math.hypot(v.x - u.x, v.y - u.y);
+      if (d < bestD) {
         bestD = d;
         best = v;
       }
     }
     for (const t of this.towers) {
       if (t.team === u.team || !t.alive) continue;
-      const d = this.edgeDist(u, t);
-      if (d <= s.sight && d < bestD) {
+      if (this.edgeDist(u, t) > s.sight) continue;
+      const d = Math.hypot(t.x - u.x, t.y - u.y);
+      if (d < bestD) {
         bestD = d;
         best = t;
       }

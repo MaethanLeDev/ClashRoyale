@@ -63,3 +63,28 @@ export function canDeployAt(
 export function snapTile(v: number, max: number): number {
   return Math.min(max - 0.5, Math.max(0.5, Math.floor(v) + 0.5));
 }
+
+export function nearestDeployable(
+  team: Team,
+  card: CardDef,
+  x: number,
+  y: number,
+  towers: TowerLite[],
+  buildings: BuildingLite[],
+): { x: number; y: number } | null {
+  const sx = snapTile(x, ARENA_W);
+  const sy = snapTile(y, ARENA_H);
+  if (canDeployAt(team, card, sx, sy, towers, buildings)) return { x: sx, y: sy };
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (let ty = 0.5; ty < ARENA_H; ty += 1) {
+    for (let tx = 0.5; tx < ARENA_W; tx += 1) {
+      const d = (tx - x) ** 2 + (ty - y) ** 2;
+      if (d >= bestD) continue;
+      if (!canDeployAt(team, card, tx, ty, towers, buildings)) continue;
+      bestD = d;
+      best = { x: tx, y: ty };
+    }
+  }
+  return best;
+}
