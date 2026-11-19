@@ -9,7 +9,7 @@ import { GAME_NAME } from "../shared/constants";
 import type { ClientMsg, ServerMsg } from "../shared/protocol";
 import { Room, sanitizeDeck, type Client } from "./room";
 
-const PORT = Number(process.env.PORT ?? 3000);
+const PORTS = process.env.PORT ? [Number(process.env.PORT)] : [3000, 8080, 8000, 5050, 4321, 0];
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)), "dist");
 
 const MIME: Record<string, string> = {
@@ -157,13 +157,43 @@ wss.on("connection", (ws: WebSocket) => {
   });
 });
 
-http.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n  ${GAME_NAME} — serveur lancé sur le port ${PORT}\n`);
-  console.log(`  Sur cette machine :   http://localhost:${PORT}`);
+wss.on("error", () => {});
+
+function printAddresses(port: number) {
+  console.log(`\n  ${GAME_NAME} — serveur lancé sur le port ${port}\n`);
+  console.log(`  Sur cette machine :   http://localhost:${port}`);
   for (const list of Object.values(networkInterfaces())) {
     for (const a of list ?? []) {
-      if (a.family === "IPv4" && !a.internal) console.log(`  Sur le réseau local : http://${a.address}:${PORT}`);
+      if (a.family === "IPv4" && !a.internal) console.log(`  Sur le réseau local : http://${a.address}:${port}`);
     }
   }
   console.log("");
-});
+}
+
+function listen(i: number) {
+  const port = PORTS[i];
+  const onListening = () => {
+    http.off("error", onError);
+    const addr = http.address();
+    printAddresses(typeof addr === "object" && addr ? addr.port : port);
+  };
+  const onError = (err: NodeJS.ErrnoException) => {
+    http.off("listening", onListening);
+    const blocked = err.code === "EACCES" || err.code === "EADDRINUSE";
+    const reason = err.code === "EADDRINUSE" ? "déjà utilisé" : "bloqué par le système";
+    if (blocked && i + 1 < PORTS.length) {
+      const next = PORTS[i + 1] || "automatique";
+      console.log(`  Port ${port} ${reason}, essai du port ${next}…`);
+      listen(i + 1);
+      return;
+    }
+    console.error(`\n  Impossible de démarrer le serveur sur le port ${port} (${err.code ?? err.message}).`);
+    console.error(`  Essaie un autre port, par exemple sous PowerShell :  $env:PORT=8080; npm start\n`);
+    process.exit(1);
+  };
+  http.once("error", onError);
+  http.once("listening", onListening);
+  http.listen(port, "0.0.0.0");
+}
+
+listen(0);

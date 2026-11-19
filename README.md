@@ -25,7 +25,12 @@ Sur le réseau local : http://192.168.1.42:3000
 
 Tout le monde ouvre l'adresse « réseau local » dans son navigateur (même Wi-Fi). Un joueur crée un salon, les autres tapent le code à 4 lettres ou cliquent dessus dans la liste. Les places vides sont remplies par des bots au lancement.
 
-Si les autres n'arrivent pas à se connecter, vérifier que le pare-feu de la machine hôte autorise le port 3000. Le port se change avec `PORT=4000 npm start`.
+Si le port 3000 est occupé ou bloqué (fréquent sous Windows avec Hyper-V, WSL ou Docker), le serveur essaie tout seul 8080, 8000, etc. et affiche le port retenu. Pour imposer un port :
+
+- PowerShell : `$env:PORT=8080; npm start`
+- macOS / Linux : `PORT=8080 npm start`
+
+Si les autres n'arrivent pas à se connecter, accepter la fenêtre du pare-feu Windows au premier lancement (cocher « Réseaux privés »), et vérifier que le Wi-Fi est bien en profil « Privé » et pas « Public ».
 
 ## Développement
 
