@@ -1,14 +1,14 @@
 import { DEFAULT_DECK } from "../../shared/cards";
 import { DT } from "../../shared/constants";
 import { Sim } from "../../shared/sim";
-import { Bot } from "../../server/bot";
+import { Bot } from "../../shared/ai/heuristic";
 import { GameView } from "./game/view";
 
 export interface Preview {
   dispose(): void;
 }
 
-export function createPreview(container: HTMLElement, arena: number): Preview {
+export function createPreview(container: HTMLElement, arena: number, orbit = 0): Preview {
   const overlay = document.createElement("div");
   overlay.className = "preview-overlay";
   container.appendChild(overlay);
@@ -18,6 +18,7 @@ export function createPreview(container: HTMLElement, arena: number): Preview {
     team: 0,
     arena,
     preview: true,
+    orbit,
     getInsets: () => ({ top: 0, bottom: 0 }),
     onPlay: () => {},
     onSelect: () => {},

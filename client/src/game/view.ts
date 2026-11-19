@@ -11,6 +11,8 @@ import {
 } from "./models";
 import { ALLY, ENEMY, headTexture } from "./textures";
 import { themeFor, type Theme } from "./themes";
+import { emoteById } from "../../../shared/emotes";
+import { emoteEl } from "../emotes";
 import { cameraFor, getTilt, onTilt, setTilt } from "../settings";
 
 interface UnitView {
@@ -70,6 +72,7 @@ export interface ViewOptions {
   team: Team;
   arena: number;
   preview?: boolean;
+  orbit?: number;
   getInsets(): { top: number; bottom: number };
   onPlay(card: CardId, x: number, y: number): void;
   onSelect(card: CardId | null, dragging: boolean): void;
@@ -115,6 +118,8 @@ export class GameView {
   private tiltTarget = getTilt();
   private offTilt: () => void;
   private fitDist = 45;
+  private camFit = new THREE.Vector3();
+  private celebration: { winner: Team | -1; t: number; next: number; collapsed: boolean } | null = null;
 
   constructor(private opts: ViewOptions) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -251,7 +256,9 @@ export class GameView {
     const fog = this.scene.fog as THREE.Fog;
     fog.near = hi + this.theme.fogNear - 40;
     fog.far = hi + this.theme.fogFar - 40;
+    if (this.opts.orbit) cam.position.multiplyScalar(1.12);
     this.camBase.copy(cam.position);
+    this.camFit.copy(cam.position);
     const desired = (topLim + botLim) / 2;
     const actual = (m.maxY + m.minY) / 2;
     const offY = ((desired - actual) * h) / 2;
@@ -483,6 +490,44 @@ export class GameView {
     }
   }
 
+  celebrate(winner: Team | -1) {
+    if (this.celebration) return;
+    this.celebration = { winner, t: 0, next: 0, collapsed: false };
+    this.clearSelection();
+    if (winner !== -1) this.tiltTarget = Math.min(1, this.tilt + 0.25);
+  }
+
+  private updateCelebration(dt: number) {
+    const c = this.celebration!;
+    c.t += dt;
+    const kings = [...this.towers.values()].filter((t) => t.kind === "king");
+    const winnerKing = kings.find((k) => k.team === c.winner);
+    const loserKing = kings.find((k) => k.team !== c.winner);
+    if (c.winner !== -1 && !c.collapsed && c.t > 0.5 && loserKing) {
+      c.collapsed = true;
+      if (!loserKing.model.destroyed) {
+        loserKing.model.setDestroyed();
+        this.fx.fireball(loserKing.pos.clone().setY(3), 5);
+        this.fx.burst(loserKing.pos.clone().setY(2), 0x8f897d, 40, { speed: 8, size: 0.3, up: 6, cube: true });
+        this.shake = Math.max(this.shake, 1);
+      }
+    }
+    c.next -= dt;
+    if (c.next <= 0 && c.t < 6 && winnerKing && c.winner !== -1) {
+      c.next = 0.28 + Math.random() * 0.25;
+      const colors = [0xffd84a, 0x5aa8ff, 0xff6bd6, 0x7cff8a, 0xffffff, 0xff8a3a];
+      const p = winnerKing.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 8 + Math.random() * 5, (Math.random() - 0.5) * 6));
+      const col = colors[Math.floor(Math.random() * colors.length)];
+      this.fx.burst(p, col, 26, { speed: 7, size: 0.12, up: 2, gravity: 3, life: 1.3 });
+      this.fx.spark(p, col, 4, 0.35);
+    }
+    if (winnerKing && c.t < 4) {
+      const target = winnerKing.pos;
+      const k = Math.min(1, c.t / 4) * 0.25;
+      this.camBase.lerp(new THREE.Vector3(target.x, this.camBase.y * 0.9, target.z + Math.sign(this.camFit.z) * 12), k * dt * 2);
+    }
+  }
+
   floatText(world: THREE.Vector3, text: string, color: string, size: number) {
     const el = document.createElement("div");
     el.className = "floater";
@@ -497,12 +542,16 @@ export class GameView {
   showEmote(team: Team, name: string, emote: string) {
     const king = [...this.towers.values()].find((t) => t.team === team && t.kind === "king");
     if (!king) return;
+    const def = emoteById(emote);
+    if (!def) return;
     const el = document.createElement("div");
-    el.className = "bubble";
-    el.innerHTML = `${emote}<small></small>`;
-    el.querySelector("small")!.textContent = name;
+    el.className = `bubble ${team === this.opts.team ? "ally" : "enemy"}`;
+    el.append(emoteEl(def, false));
+    const small = document.createElement("small");
+    small.textContent = name;
+    el.append(small);
     this.opts.overlay.appendChild(el);
-    const f: Floater = { el, world: king.pos.clone().setY(7.5), life: 2.2 };
+    const f: Floater = { el, world: king.pos.clone().setY(7.5), life: 2.6 };
     this.floaters.push(f);
     this.placeFloater(f);
   }
@@ -725,6 +774,13 @@ export class GameView {
 
     this.fx.update(dt);
 
+    if (this.opts.orbit) {
+      const a = Math.sin(this.time * this.opts.orbit) * 0.55;
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      this.camBase.set(this.camFit.x * c + this.camFit.z * sn, this.camFit.y, -this.camFit.x * sn + this.camFit.z * c);
+    }
+    if (this.celebration) this.updateCelebration(dt);
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt * 1.8);
       const s = this.shake * this.shake * 0.6;
@@ -736,6 +792,7 @@ export class GameView {
     } else {
       this.camera.position.copy(this.camBase);
     }
+    if (this.opts.orbit || this.celebration) this.camera.lookAt(0, 0, 0);
 
     const keep: Floater[] = [];
     for (const f of this.floaters) {

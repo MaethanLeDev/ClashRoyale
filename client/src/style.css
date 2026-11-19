@@ -1089,7 +1089,7 @@ input[type="text"]:focus {
   font-size: 26px;
   pointer-events: none;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-  animation: bubble 2.2s ease forwards;
+  animation: bubble 2.6s ease forwards;
   z-index: 6;
 }
 
@@ -1488,5 +1488,331 @@ input[type="range"]::-moz-range-thumb {
   }
   .road-step .actions {
     grid-column: 1 / -1;
+  }
+}
+
+/* ----- Émotes animées ----- */
+
+.emote-menu {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 6px;
+}
+
+.emote-menu .emote-choice {
+  width: 72px;
+  height: 78px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.emote {
+  position: relative;
+  width: 96px;
+  height: 104px;
+  display: grid;
+  place-items: center;
+}
+
+.emote.small {
+  width: 64px;
+  height: 70px;
+}
+
+.emote-head {
+  width: 78%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #fff, 0 4px 10px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.emote-text {
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  transform: translateX(-50%);
+  font-family: var(--font-title);
+  font-size: 20px;
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+  -webkit-text-stroke: 1.5px #1b1440;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 #1b1440;
+}
+
+.emote.small .emote-text {
+  font-size: 14px;
+}
+
+.emote span {
+  position: absolute;
+  pointer-events: none;
+}
+
+.emote-laugh .emote-head {
+  animation: e-laugh 0.45s ease-in-out infinite alternate;
+}
+@keyframes e-laugh {
+  from { transform: rotate(-10deg) translateY(2px) scale(1); }
+  to { transform: rotate(10deg) translateY(-6px) scale(1.06); }
+}
+.emote-laugh .drop {
+  width: 10px;
+  height: 14px;
+  background: #7fd3ff;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  top: 30%;
+  animation: e-drop 0.9s ease-in infinite;
+}
+.emote-laugh .d0 { left: 4%; }
+.emote-laugh .d1 { right: 4%; animation-delay: 0.45s; }
+@keyframes e-drop {
+  0% { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(0, 34px) scale(1); opacity: 0; }
+}
+
+.emote-stamp .emote-head {
+  animation: e-bob 1.2s ease-in-out infinite;
+}
+.emote-stamp .emote-text {
+  font-size: 34px;
+  color: #ffd84a;
+  bottom: auto;
+  top: 50%;
+  animation: e-stamp 0.5s cubic-bezier(0.2, 1.8, 0.4, 1) both 0.15s;
+}
+.emote.small.emote-stamp .emote-text { font-size: 22px; }
+@keyframes e-stamp {
+  from { transform: translate(-50%, -50%) scale(3) rotate(-25deg); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1) rotate(-12deg); opacity: 1; }
+}
+@keyframes e-bob {
+  50% { transform: translateY(-5px); }
+}
+
+.emote-shock .emote-head {
+  animation: e-shock 0.9s cubic-bezier(0.2, 1.6, 0.4, 1) infinite;
+}
+@keyframes e-shock {
+  0% { transform: scale(0.85); }
+  25% { transform: scale(1.18); }
+  35% { transform: scale(1.1) translateX(-2px); }
+  45% { transform: scale(1.12) translateX(2px); }
+  100% { transform: scale(1); }
+}
+
+.emote-rage .emote-head {
+  animation: e-rage 0.12s linear infinite alternate;
+  filter: sepia(0.4) saturate(2.4) hue-rotate(-20deg);
+}
+@keyframes e-rage {
+  from { transform: translateX(-3px) rotate(-2deg); }
+  to { transform: translateX(3px) rotate(2deg); }
+}
+.emote-rage .puff {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  top: 4%;
+  animation: e-puff 1s ease-out infinite;
+}
+.emote-rage .p0 { left: 6%; }
+.emote-rage .p1 { right: 6%; animation-delay: 0.33s; }
+.emote-rage .p2 { left: 45%; top: -4%; animation-delay: 0.66s; }
+@keyframes e-puff {
+  from { transform: translateY(6px) scale(0.3); opacity: 0.9; }
+  to { transform: translateY(-22px) scale(1.4); opacity: 0; }
+}
+
+.emote-cry .emote-head {
+  animation: e-sob 0.6s ease-in-out infinite;
+}
+@keyframes e-sob {
+  50% { transform: translateY(3px) scaleY(0.96); }
+}
+.emote-cry .tear {
+  top: 40%;
+  width: 7px;
+  height: 0;
+  background: linear-gradient(#9fe0ff, #4aaef0);
+  border-radius: 4px;
+  animation: e-tear 0.8s ease-in infinite;
+}
+.emote-cry .l { left: 26%; }
+.emote-cry .r { right: 26%; animation-delay: 0.2s; }
+@keyframes e-tear {
+  from { height: 0; opacity: 1; }
+  to { height: 46px; opacity: 0.2; }
+}
+
+.emote-vroom .emote-head {
+  animation: e-vroom 0.7s ease-in-out infinite;
+}
+@keyframes e-vroom {
+  0% { transform: translateX(-6px) rotate(-4deg); }
+  50% { transform: translateX(6px) rotate(3deg); }
+  100% { transform: translateX(-6px) rotate(-4deg); }
+}
+.emote-vroom .speed {
+  left: -6%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  animation: e-speed 0.45s linear infinite;
+}
+.emote-vroom .s0 { top: 30%; width: 24px; }
+.emote-vroom .s1 { top: 48%; width: 34px; animation-delay: 0.15s; }
+.emote-vroom .s2 { top: 66%; width: 20px; animation-delay: 0.3s; }
+@keyframes e-speed {
+  from { transform: translateX(10px); opacity: 1; }
+  to { transform: translateX(-16px); opacity: 0; }
+}
+
+.bubble {
+  padding: 8px 10px 6px;
+  font-size: 14px;
+}
+
+.bubble.ally {
+  box-shadow: 0 0 0 3px var(--ally), 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.bubble.enemy {
+  box-shadow: 0 0 0 3px var(--enemy), 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ----- Fin de partie animée ----- */
+
+.end-screen {
+  animation: fade 0.6s ease;
+}
+
+.end-screen.win {
+  background: radial-gradient(circle at 50% 40%, rgba(255, 207, 63, 0.25), rgba(5, 8, 20, 0.85) 60%);
+}
+
+.end-screen .confetti {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.end-card {
+  position: relative;
+}
+
+.end-title .letter {
+  display: inline-block;
+  animation: letter-in 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) both;
+}
+
+.end-title.lose .letter {
+  animation-name: letter-drop;
+}
+
+@keyframes letter-in {
+  from {
+    transform: translateY(-60px) scale(0.3) rotate(-20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes letter-drop {
+  from {
+    transform: translateY(-40px);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(6px);
+  }
+}
+
+.crown-pop {
+  animation: crown-pop 0.55s cubic-bezier(0.2, 1.9, 0.4, 1) both;
+  filter: drop-shadow(0 0 10px rgba(255, 216, 74, 0.7));
+}
+
+@keyframes crown-pop {
+  from {
+    transform: scale(0) rotate(-40deg);
+    opacity: 0;
+  }
+}
+
+.end-trophies {
+  animation: pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both 1.2s;
+}
+
+.end-btn {
+  animation: fade 0.5s ease both 1.6s;
+}
+
+/* ----- Arène animée du salon ----- */
+
+.diorama-wrap {
+  position: relative;
+  margin: 0 0 18px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.12), 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.diorama {
+  width: 100%;
+  height: clamp(220px, 38vh, 380px);
+  background: #0c1124;
+}
+
+.diorama canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.diorama-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 26px 16px 12px;
+  background: linear-gradient(transparent, rgba(8, 12, 28, 0.85));
+  pointer-events: none;
+}
+
+.diorama-label .arena-title {
+  font-family: var(--font-title);
+  font-size: 22px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.diorama-label .bot-style {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.end-crowns span {
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .end-crowns {
+    gap: 10px;
+    font-size: 30px;
+  }
+  .end-crowns svg {
+    width: 30px;
+    height: 30px;
+  }
+  .end-card {
+    padding: 20px 12px;
   }
 }

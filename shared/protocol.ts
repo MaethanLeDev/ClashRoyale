@@ -51,7 +51,7 @@ export type GameEvent =
   | { e: "deploy"; c: CardId; x: number; y: number; tm: Team; by: string }
   | { e: "attack"; id: number; tid: number }
   | { e: "hit"; id: number; x: number; y: number; dmg: number; k: string }
-  | { e: "die"; id: number; x: number; y: number; c: CardId }
+  | { e: "die"; id: number; x: number; y: number; c: CardId; tm: Team }
   | { e: "tower"; id: number; tm: Team; x: number; y: number; k: TowerKind }
   | { e: "spell"; c: CardId; x: number; y: number; r: number; tm: Team }
   | { e: "spellCast"; c: CardId; x: number; y: number; r: number; tm: Team; delay: number }
@@ -88,6 +88,8 @@ export interface RoomInfo {
   mode: Mode;
   hostId: string;
   status: "lobby" | "playing";
+  arena: number;
+  botStyle: { label: string; description: string } | null;
   players: RoomPlayer[];
 }
 

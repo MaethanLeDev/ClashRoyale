@@ -1,12 +1,12 @@
-import { CARDS, type CardId } from "../shared/cards";
-import { ARENA_H, ARENA_W, BRIDGES_X, RIVER_Y } from "../shared/constants";
-import type { Sim, SimPlayer } from "../shared/sim";
+import { CARDS, type CardId } from "../cards";
+import { ARENA_H, ARENA_W, BRIDGES_X, RIVER_Y } from "../constants";
+import type { Sim, SimPlayer } from "../sim";
 
 export class Bot {
   private think = 1 + Math.random();
   private saveUntil = 0;
 
-  constructor(private sim: Sim, public playerId: string) {}
+  constructor(private sim: Sim, public playerId: string, private slowness = 0) {}
 
   private get player(): SimPlayer | undefined {
     return this.sim.players.get(this.playerId);
@@ -26,7 +26,7 @@ export class Bot {
     if (this.sim.phase !== "playing" && this.sim.phase !== "overtime") return;
     this.think -= dt;
     if (this.think > 0) return;
-    this.think = 0.5 + Math.random() * 0.9;
+    this.think = (0.5 + Math.random() * 0.9) * (1 + this.slowness * 1.5);
 
     const team = p.team;
     const threats = this.sim.units.filter((u) => u.team !== team && this.local(team, u.y) < RIVER_Y + 1.5);

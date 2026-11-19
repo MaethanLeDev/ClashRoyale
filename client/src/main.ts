@@ -57,7 +57,27 @@ const app = {
 let current: HTMLElement | null = null;
 const connBadge = h("div", { class: "conn" }, h("span", { class: "dot" }), "Connexion…");
 
-function mount(el: HTMLElement) {
+let diorama: { arena: number; box: HTMLElement; preview: Preview | null } | null = null;
+
+function disposeDiorama() {
+  diorama?.preview?.dispose();
+  diorama = null;
+}
+
+function dioramaFor(arena: number): HTMLElement {
+  if (diorama && diorama.arena === arena) return diorama.box;
+  disposeDiorama();
+  const box = h("div", { class: "diorama" });
+  const d: { arena: number; box: HTMLElement; preview: Preview | null } = { arena, box, preview: null };
+  diorama = d;
+  requestAnimationFrame(() => {
+    if (diorama === d) d.preview = createPreview(box, arena, 0.12);
+  });
+  return box;
+}
+
+function mount(el: HTMLElement, keepDiorama = false) {
+  if (!keepDiorama) disposeDiorama();
   current?.remove();
   current = el;
   ui.prepend(el);
@@ -350,7 +370,8 @@ function renderDeck() {
   const back = () => {
     if (app.deck.length !== DECK_SIZE) return toast(ui, `Ton deck doit contenir ${DECK_SIZE} cartes`);
     swapIn = null;
-    renderHome();
+    if (app.room) renderRoom();
+    else renderHome();
   };
   mount(
     h(
@@ -518,6 +539,24 @@ function renderRoom() {
     ),
   );
   const leave = () => net.send({ type: "leave" });
+  const arena = ARENAS[room.arena] ?? ARENAS[0];
+  const stage = h(
+    "div",
+    { class: "diorama-wrap" },
+    dioramaFor(arena.id),
+    h(
+      "div",
+      { class: "diorama-label" },
+      h("div", { class: "arena-title" }, `${arena.icon} Arène ${arena.id + 1} · ${arena.name}`),
+      room.botStyle ? h("div", { class: "bot-style" }, `Bots : ${room.botStyle.label} — ${room.botStyle.description}`) : null,
+    ),
+  );
+  const deckPanel = h(
+    "div",
+    { class: "panel", style: { marginTop: "18px" } },
+    h("div", { class: "topbar", style: { marginBottom: "10px" } }, h("h2", { style: { margin: "0", flex: "1" } }, "Ton deck"), h("button", { class: "btn small ghost", onclick: renderDeck }, "Changer de deck")),
+    h("div", { class: "deck-preview" }, ...app.deck.map((c) => cardEl(c, { showName: false }))),
+  );
   mount(
     h(
       "div",
@@ -527,6 +566,7 @@ function renderRoom() {
         { class: "screen-inner" },
         h("div", { class: "topbar" }, h("button", { class: "btn small ghost", onclick: leave }, "← Quitter"), h("h1", {}, "Salon"), modeSel),
         h("div", { class: "room-code" }, h("div", { class: "label" }, "Code du salon"), h("div", { class: "value" }, room.id)),
+        stage,
         h("div", { class: "panel" }, h("div", { class: "teams" }, col(0), h("div", { class: "vs" }, "VS"), col(1))),
         h(
           "div",
@@ -543,9 +583,11 @@ function renderRoom() {
             : h("div", { class: "help" }, "En attente que l'hôte lance la partie…"),
           h("div", { class: "help", style: { marginTop: "10px" } }, "Les places vides sont complétées par des bots au lancement."),
         ),
+        deckPanel,
       ),
       connBadge,
     ),
+    true,
   );
   updateConn();
 }
@@ -554,6 +596,7 @@ function renderRoom() {
 
 function startGame(team: Team, players: PlayerSnap[], arena: number) {
   stopGame();
+  disposeDiorama();
   app.screen = "game";
   current?.remove();
   current = null;
@@ -632,7 +675,11 @@ net.on((msg: ServerMsg) => {
       }
       break;
     case "end":
-      app.game?.hud.showEnd(msg.winner, msg.crowns, msg.trophies);
+      if (app.game) {
+        const g = app.game;
+        g.view.celebrate(msg.winner);
+        setTimeout(() => g.hud.showEnd(msg.winner, msg.crowns, msg.trophies), 1700);
+      }
       break;
     case "profile":
       app.profile = { trophies: msg.trophies, best: msg.best, wins: msg.wins, losses: msg.losses };

@@ -38,7 +38,10 @@ Si les autres n'arrivent pas à se connecter, accepter la fenêtre du pare-feu W
 npm run dev        # serveur (port 3000) + Vite avec rechargement à chaud (port 5173)
 npm run typecheck  # vérification TypeScript
 npm run simtest    # parties bot contre bot sans navigateur, pour l'équilibrage
+npm run train      # entraînement des bots (voir training/README.md)
 ```
+
+Pour tester la fin de partie sans attendre 3 minutes : `DEV_MATCH_SECONDS=10 npm start`.
 
 En mode dev, ouvrir `http://<ip>:5173`.
 
@@ -89,6 +92,10 @@ Victoire +30 trophées, défaite −20 (moitié si l'adversaire n'est composé q
 | Volcan des Rattrapages | 1500 |
 
 La partie se joue dans l'arène du joueur humain le mieux classé.
+
+## Bots entraînés par apprentissage par renforcement
+
+Les bots des arènes 2 à 5 sont des réseaux de neurones entraînés en simulation, chacun avec un style : rush, défense, préshot, et le Boss. Voir [training/README.md](training/README.md) pour lancer une nuit d'entraînement (`caffeinate -i npm run train:night` sur Mac).
 
 ## Fin de partie
 

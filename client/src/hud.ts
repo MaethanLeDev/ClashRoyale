@@ -13,7 +13,8 @@ export interface HudOptions {
   onBack(): void;
 }
 
-const EMOTES = ["😂", "😡", "👍", "😱", "🤡", "☕"];
+import { EMOTES } from "../../shared/emotes";
+import { emoteEl } from "./emotes";
 
 export class Hud {
   root: HTMLDivElement;
@@ -33,6 +34,7 @@ export class Hud {
   private dbl: HTMLDivElement;
   private countdown: HTMLDivElement;
   private emoteMenu: HTMLDivElement | null = null;
+  private lastEmote = 0;
   private settingsPanel: HTMLDivElement | null = null;
   private offTilt: (() => void) | null = null;
   private lastPhase = "";
@@ -125,11 +127,16 @@ export class Hud {
       { class: "emote-menu" },
       ...EMOTES.map((e) =>
         h("button", {
+          class: "emote-choice",
+          title: e.text,
           onclick: () => {
-            this.opts.onEmote(e);
+            const now = performance.now();
+            if (now - this.lastEmote < 1500) return;
+            this.lastEmote = now;
+            this.opts.onEmote(e.id);
             this.toggleEmotes();
           },
-        }, e),
+        }, emoteEl(e, true)),
       ),
     );
     this.bottom.appendChild(this.emoteMenu);
@@ -235,11 +242,15 @@ export class Hud {
   }
 
   showEnd(winner: Team | -1, crowns: [number, number], trophies?: { delta: number; total: number }) {
+    if (this.ended) return;
     this.ended = true;
     this.emoteMenu?.remove();
+    this.settingsPanel?.remove();
     const me = this.opts.team;
+    const them = me === 0 ? 1 : 0;
     const res = winner === -1 ? "draw" : winner === me ? "win" : "lose";
     const title = res === "win" ? "Victoire !" : res === "lose" ? "Défaite…" : "Égalité";
+    let delay = 0.5;
     const side = (n: number, color: string) =>
       h(
         "div",
@@ -247,35 +258,94 @@ export class Hud {
         ...[0, 1, 2].map((i) => {
           const s = crownSvg(color);
           if (i >= n) s.classList.add("crown-off");
+          else {
+            s.classList.add("crown-pop");
+            s.style.animationDelay = `${(delay += 0.22)}s`;
+          }
           return s;
         }),
       );
-    const screen = h(
-      "div",
-      { class: "end-screen" },
-      h(
-        "div",
-        { class: "end-card" },
-        h("div", { class: `end-title ${res}` }, title),
-        h(
+    const letters = h("div", { class: `end-title ${res}` }, ...[...title].map((ch, i) => {
+      const span = h("span", { class: "letter" }, ch === " " ? "\u00a0" : ch);
+      span.style.animationDelay = `${i * 0.05}s`;
+      return span;
+    }));
+    const mine = side(crowns[me], "#5aa8ff");
+    const theirs = side(crowns[them], "#ff6b6b");
+    const count = h("span", {}, trophies ? String(trophies.total - trophies.delta) : "");
+    const trophyEl = trophies
+      ? h(
           "div",
-          { class: "end-crowns" },
-          side(crowns[me], "#5aa8ff"),
-          h("span", {}, `${crowns[me]} - ${crowns[me === 0 ? 1 : 0]}`),
-          side(crowns[me === 0 ? 1 : 0], "#ff6b6b"),
-        ),
-        trophies
-          ? h(
-              "div",
-              { class: `end-trophies ${trophies.delta > 0 ? "up" : trophies.delta < 0 ? "down" : ""}` },
-              `🏆 ${trophies.delta > 0 ? "+" : ""}${trophies.delta}`,
-              h("small", {}, `${trophies.total} trophées`),
-            )
-          : null,
-        h("button", { class: "btn gold big", onclick: () => this.opts.onBack() }, "Retour au salon"),
-      ),
+          { class: `end-trophies ${trophies.delta > 0 ? "up" : trophies.delta < 0 ? "down" : ""}` },
+          `🏆 ${trophies.delta > 0 ? "+" : ""}${trophies.delta}`,
+          h("small", {}, count, " trophées"),
+        )
+      : null;
+    const btn = h("button", { class: "btn gold big end-btn", onclick: () => this.opts.onBack() }, "Retour au salon");
+    const card = h(
+      "div",
+      { class: "end-card" },
+      letters,
+      h("div", { class: "end-crowns" }, mine, h("span", {}, `${crowns[me]} - ${crowns[them]}`), theirs),
+      trophyEl,
+      btn,
     );
+    const screen = h("div", { class: `end-screen ${res}` }, card);
     this.root.appendChild(screen);
+    if (res === "win") this.confetti(screen);
+    if (trophies && trophyEl) {
+      const from = trophies.total - trophies.delta;
+      const startAt = performance.now() + (delay + 0.4) * 1000;
+      const tick = (now: number) => {
+        const k = Math.max(0, Math.min(1, (now - startAt) / 900));
+        count.textContent = String(Math.round(from + (trophies.total - from) * (1 - (1 - k) ** 3)));
+        if (k < 1 && screen.isConnected) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+  }
+
+  private confetti(parent: HTMLElement) {
+    const canvas = document.createElement("canvas");
+    canvas.className = "confetti";
+    parent.prepend(canvas);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = (canvas.width = parent.clientWidth * dpr);
+    const H = (canvas.height = parent.clientHeight * dpr);
+    const g = canvas.getContext("2d")!;
+    const colors = ["#ffd84a", "#5aa8ff", "#ff6bd6", "#7cff8a", "#ffffff", "#ff8a3a"];
+    const parts = Array.from({ length: 160 }, () => ({
+      x: W / 2 + (Math.random() - 0.5) * W * 0.3,
+      y: H * 0.45,
+      vx: (Math.random() - 0.5) * 14 * dpr,
+      vy: (-8 - Math.random() * 12) * dpr,
+      r: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.4,
+      s: (5 + Math.random() * 6) * dpr,
+      c: colors[Math.floor(Math.random() * colors.length)],
+    }));
+    const t0 = performance.now();
+    const frame = (now: number) => {
+      const t = (now - t0) / 1000;
+      g.clearRect(0, 0, W, H);
+      for (const p of parts) {
+        p.vy += 0.35 * dpr;
+        p.vx *= 0.99;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.r += p.vr;
+        g.save();
+        g.translate(p.x, p.y);
+        g.rotate(p.r);
+        g.globalAlpha = Math.max(0, 1 - t / 4.5);
+        g.fillStyle = p.c;
+        g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+        g.restore();
+      }
+      if (t < 4.5 && canvas.isConnected) requestAnimationFrame(frame);
+      else canvas.remove();
+    };
+    requestAnimationFrame(frame);
   }
 
   destroy() {

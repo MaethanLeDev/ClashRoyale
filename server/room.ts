@@ -2,7 +2,9 @@ import { CARD_IDS, DEFAULT_DECK, DECK_SIZE, type CardId } from "../shared/cards"
 import { DT } from "../shared/constants";
 import type { Mode, RoomInfo, RoomPlayer, ServerMsg, Team } from "../shared/protocol";
 import { Sim } from "../shared/sim";
-import { Bot } from "./bot";
+import { Bot } from "../shared/ai/heuristic";
+import { emoteById } from "../shared/emotes";
+import { botDeck, brainSummary, createBot, type BotLike } from "./brains";
 import { arenaFor } from "../shared/arenas";
 import { getProfile, recordResult } from "./profiles";
 
@@ -31,7 +33,7 @@ export class Room {
   status: "lobby" | "playing" = "lobby";
   slots: Slot[] = [];
   sim: Sim | null = null;
-  bots: Bot[] = [];
+  bots: BotLike[] = [];
   private timer: NodeJS.Timeout | null = null;
   private botCounter = 0;
 
@@ -50,9 +52,15 @@ export class Room {
     return this.slots.filter((s) => !s.bot && s.client);
   }
 
+  private topTrophies(): number {
+    return Math.max(0, ...this.humans.map((s) => getProfile(s.name).trophies));
+  }
+
   info(): RoomInfo {
+    const arena = arenaFor(this.topTrophies()).id;
     return {
-      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status,
+      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena,
+      botStyle: brainSummary(arena),
       players: this.slots.map(({ id, name, team, bot }) => ({ id, name, team, bot })),
     };
   }
@@ -165,15 +173,21 @@ export class Room {
     if (this.status !== "lobby") return "Partie déjà en cours";
     while (this.freeTeam() !== null) this.addBot();
     const sim = new Sim();
+    if (process.env.DEV_MATCH_SECONDS) sim.timeLeft = Number(process.env.DEV_MATCH_SECONDS);
     this.sim = sim;
     this.bots = [];
+    const trophies = this.topTrophies();
+    const arena = arenaFor(trophies).id;
+    const style = brainSummary(arena);
+    if (style) {
+      this.slots.filter((s) => s.bot && s.id.startsWith("bot-")).forEach((s, i) => (s.name = i === 0 ? style.label : `${style.label} ${i + 1}`));
+    }
     for (const s of this.slots) {
-      sim.addPlayer(s.id, s.name, s.team, s.client ? s.client.deck : DEFAULT_DECK, s.bot);
-      if (s.bot) this.bots.push(new Bot(sim, s.id));
+      sim.addPlayer(s.id, s.name, s.team, s.client ? s.client.deck : s.bot ? botDeck(arena) : DEFAULT_DECK, s.bot);
+      if (s.bot) this.bots.push(createBot(sim, s.id, arena, trophies));
     }
     this.status = "playing";
     const players = this.slots.map((s) => ({ id: s.id, name: s.name, tm: s.team, bot: s.bot }));
-    const arena = Math.max(0, ...this.humans.map((s) => arenaFor(getProfile(s.name).trophies).id));
     for (const s of this.slots) {
       s.client?.send({ type: "start", team: s.team, mode: this.mode, players, you: s.id, arena });
     }
@@ -191,14 +205,15 @@ export class Room {
   emote(c: Client, emote: string) {
     const slot = this.slots.find((s) => s.id === c.id);
     if (!slot || !this.sim) return;
-    this.broadcast({ type: "emote", from: c.id, name: slot.name, tm: slot.team, emote: emote.slice(0, 4) });
+    if (!emoteById(emote)) return;
+    this.broadcast({ type: "emote", from: c.id, name: slot.name, tm: slot.team, emote });
   }
 
   private tick() {
     const sim = this.sim;
     if (!sim) return;
-    for (const b of this.bots) b.update(DT);
     sim.step(DT);
+    for (const b of this.bots) b.update(DT);
     const base = sim.baseSnapshot();
     sim.clearEvents();
     for (const s of this.slots) {

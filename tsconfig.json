@@ -10,5 +10,5 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["shared", "server", "client/src", "tools", "vite.config.ts"]
+  "include": ["shared", "server", "client/src", "tools", "training", "vite.config.ts"]
 }

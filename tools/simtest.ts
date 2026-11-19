@@ -1,7 +1,7 @@
 import { DEFAULT_DECK } from "../shared/cards";
 import { DT } from "../shared/constants";
 import { Sim } from "../shared/sim";
-import { Bot } from "../server/bot";
+import { Bot } from "../shared/ai/heuristic";
 
 const games = Number(process.argv[2] ?? 10);
 const results = { 0: 0, 1: 0, "-1": 0 } as Record<string, number>;
