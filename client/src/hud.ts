@@ -2,6 +2,7 @@ import { CARDS, type CardId } from "../../shared/cards";
 import { MAX_ELIXIR, RESOURCE_NAME } from "../../shared/constants";
 import type { PlayerSnap, StateMsg, Team } from "../../shared/protocol";
 import { cardEl, crownSvg, h, toast } from "./ui";
+import { getTilt, onTilt, setTilt } from "./settings";
 
 export interface HudOptions {
   team: Team;
@@ -32,6 +33,8 @@ export class Hud {
   private dbl: HTMLDivElement;
   private countdown: HTMLDivElement;
   private emoteMenu: HTMLDivElement | null = null;
+  private settingsPanel: HTMLDivElement | null = null;
+  private offTilt: (() => void) | null = null;
   private lastPhase = "";
   private lastCount = -1;
   private elixir = 0;
@@ -79,10 +82,12 @@ export class Hud {
     this.dropNum = h("div", { class: "drop" }, "0");
     const ticks = h("div", { class: "ticks" }, ...Array.from({ length: 10 }, () => h("span")));
     const emoteBtn = h("button", { class: "emote-btn", title: "Émotes", onclick: () => this.toggleEmotes() }, "💬");
+    const settingsBtn = h("button", { class: "emote-btn settings-btn", title: "Caméra", onclick: () => this.toggleSettings() }, "🎥");
     this.bottom = h(
       "div",
       { class: "hud-bottom" },
       emoteBtn,
+      settingsBtn,
       handRow,
       h("div", { class: "elixir" }, this.dropNum, h("div", { class: "bar" }, this.fill, ticks, h("div", { class: "rname" }, RESOURCE_NAME))),
     );
@@ -128,6 +133,26 @@ export class Hud {
       ),
     );
     this.bottom.appendChild(this.emoteMenu);
+  }
+
+  private toggleSettings() {
+    if (this.settingsPanel) {
+      this.settingsPanel.remove();
+      this.settingsPanel = null;
+      this.offTilt?.();
+      this.offTilt = null;
+      return;
+    }
+    const slider = h("input", { type: "range", min: "0", max: "100", value: String(Math.round(getTilt() * 100)) }) as HTMLInputElement;
+    slider.addEventListener("input", () => setTilt(Number(slider.value) / 100));
+    this.offTilt = onTilt((t) => (slider.value = String(Math.round(t * 100))));
+    this.settingsPanel = h(
+      "div",
+      { class: "settings-panel" },
+      h("div", { class: "lbl" }, "Caméra"),
+      h("div", { class: "tilt-row" }, h("span", {}, "Vue du dessus"), slider, h("span", {}, "Immersive")),
+    );
+    this.bottom.appendChild(this.settingsPanel);
   }
 
   setSelected(card: CardId | null, dragging: boolean) {
@@ -188,6 +213,11 @@ export class Hud {
       this.countdown.style.fontSize = "clamp(48px, 12vw, 110px)";
       setTimeout(() => this.countdown.replaceChildren(), 900);
     }
+    if (s.phase === "tiebreak" && this.lastPhase !== "tiebreak") {
+      this.countdown.style.fontSize = "clamp(40px, 10vw, 90px)";
+      this.countdown.replaceChildren(h("span", {}, "Départage !"));
+      setTimeout(() => this.countdown.replaceChildren(), 1600);
+    }
     if (s.phase === "overtime" && this.lastPhase === "playing") {
       this.countdown.style.fontSize = "clamp(40px, 10vw, 90px)";
       this.countdown.replaceChildren(h("span", {}, "Prolongations !"));
@@ -199,12 +229,12 @@ export class Hud {
     const m = Math.floor(left / 60);
     const sec = left % 60;
     this.timerVal.textContent = `${m}:${String(sec).padStart(2, "0")}`;
-    this.timerLbl.textContent = s.phase === "overtime" ? "Prolongations" : "Temps";
+    this.timerLbl.textContent = s.phase === "tiebreak" ? "Départage" : s.phase === "overtime" ? "Prolongations" : "Temps";
     this.timerEl.classList.toggle("urgent", s.phase !== "countdown" && left <= 30);
     this.dbl.style.display = s.dbl ? "" : "none";
   }
 
-  showEnd(winner: Team | -1, crowns: [number, number]) {
+  showEnd(winner: Team | -1, crowns: [number, number], trophies?: { delta: number; total: number }) {
     this.ended = true;
     this.emoteMenu?.remove();
     const me = this.opts.team;
@@ -234,6 +264,14 @@ export class Hud {
           h("span", {}, `${crowns[me]} - ${crowns[me === 0 ? 1 : 0]}`),
           side(crowns[me === 0 ? 1 : 0], "#ff6b6b"),
         ),
+        trophies
+          ? h(
+              "div",
+              { class: `end-trophies ${trophies.delta > 0 ? "up" : trophies.delta < 0 ? "down" : ""}` },
+              `🏆 ${trophies.delta > 0 ? "+" : ""}${trophies.delta}`,
+              h("small", {}, `${trophies.total} trophées`),
+            )
+          : null,
         h("button", { class: "btn gold big", onclick: () => this.opts.onBack() }, "Retour au salon"),
       ),
     );
@@ -241,6 +279,7 @@ export class Hud {
   }
 
   destroy() {
+    this.offTilt?.();
     this.root.remove();
   }
 }

@@ -81,6 +81,7 @@ export interface TowerModel {
   height: number;
   destroyed: boolean;
   setDestroyed(): void;
+  restore(): void;
 }
 
 export function createTowerModel(kind: TowerKind, color: number, facing: number): TowerModel {
@@ -219,6 +220,11 @@ export function createTowerModel(kind: TowerKind, color: number, facing: number)
       intact.visible = false;
       rubble.visible = true;
     },
+    restore() {
+      model.destroyed = false;
+      intact.visible = true;
+      rubble.visible = false;
+    },
   };
   return model;
 }
@@ -232,6 +238,7 @@ export interface UnitModel {
   mats: THREE.MeshStandardMaterial[];
   cape?: THREE.Mesh;
   bulb?: THREE.Mesh;
+  wheels?: THREE.Object3D[];
   height: number;
   barY: number;
   barW: number;
@@ -248,6 +255,7 @@ function trackMats(o: THREE.Object3D): THREE.MeshStandardMaterial[] {
 
 export function createUnitModel(card: CardDef, color: number): UnitModel {
   if (card.look.building) return createBuildingModel(card, color);
+  if (card.look.vehicle) return createVehicleModel(card, color);
   const root = new THREE.Group();
   const inner = new THREE.Group();
   root.add(inner);
@@ -358,6 +366,91 @@ export function createUnitModel(card: CardDef, color: number): UnitModel {
   return {
     root, inner, head, legs, arms, mats: trackMats(inner), cape,
     height: 1.9 * vs, barY: 2.0 * vs + 0.15, barW: Math.min(2.4, 0.6 + vs * 0.45),
+  };
+}
+
+function createVehicleModel(card: CardDef, color: number): UnitModel {
+  const root = new THREE.Group();
+  const inner = new THREE.Group();
+  root.add(inner);
+  const paint = mat(card.look.body, { metalness: 0.55, roughness: 0.32 });
+  const plastic = mat(0x26282c, { roughness: 0.9 });
+  const glass = mat(0x1b2633, { metalness: 0.9, roughness: 0.08 });
+  const chrome = mat(card.look.accent, { metalness: 0.9, roughness: 0.2 });
+  const team = mat(color, { roughness: 0.4, emissive: color, emissiveIntensity: 0.25 });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.72, 2.9), paint);
+  body.position.y = 0.8;
+  inner.add(body);
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.16, 0.9), paint);
+  hood.position.set(0, 1.18, 0.95);
+  hood.rotation.x = 0.12;
+  inner.add(hood);
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.26, 3.0), plastic);
+  skirt.position.y = 0.48;
+  inner.add(skirt);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.62, 1.75), glass);
+  cabin.position.set(0, 1.45, -0.25);
+  inner.add(cabin);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 1.8), paint);
+  roof.position.set(0, 1.79, -0.25);
+  inner.add(roof);
+  for (const sx of [-0.55, 0.55]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 1.6), chrome);
+    rail.position.set(sx, 1.88, -0.25);
+    inner.add(rail);
+  }
+  for (const sx of [-1, 1]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 2.6), team);
+    stripe.position.set(sx * 0.765, 0.88, 0);
+    inner.add(stripe);
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 1.6), chrome);
+    step.position.set(sx * 0.82, 0.36, -0.1);
+    inner.add(step);
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.08), paint);
+    mirror.position.set(sx * 0.82, 1.3, 0.55);
+    inner.add(mirror);
+  }
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 0.06), chrome);
+  grille.position.set(0, 0.88, 1.46);
+  inner.add(grille);
+  const lightMat = mat(0xffffff, { emissive: 0xfff4d0, emissiveIntensity: 1.6 });
+  const tailMat = mat(0xff2a2a, { emissive: 0xff2a2a, emissiveIntensity: 1.2 });
+  for (const sx of [-0.55, 0.55]) {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.06), lightMat);
+    hl.position.set(sx, 0.98, 1.46);
+    inner.add(hl);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.06), tailMat);
+    tl.position.set(sx * 1.15, 0.95, -1.46);
+    inner.add(tl);
+  }
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.13, 0.04), mat(0xf4f4f4));
+  plate.position.set(0, 0.55, 1.51);
+  inner.add(plate);
+  const wheels: THREE.Object3D[] = [];
+  const tire = mat(0x141414, { roughness: 0.95 });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const wheel = new THREE.Group();
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 14), tire);
+      t.rotation.z = Math.PI / 2;
+      wheel.add(t);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.32, 8), chrome);
+      rim.rotation.z = Math.PI / 2;
+      wheel.add(rim);
+      wheel.position.set(sx * 0.74, 0.38, sz * 0.98);
+      inner.add(wheel);
+      wheels.push(wheel);
+    }
+  }
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(card.id, color), alphaTest: 0.5 }));
+  head.scale.set(1.15, 1.15, 1);
+  head.position.set(0, 2.45, -0.3);
+  inner.add(head);
+  shadowed(inner);
+  return {
+    root, inner, head, legs: [], arms: [], mats: trackMats(inner), wheels,
+    height: 2.2, barY: 3.25, barW: 1.7,
   };
 }
 

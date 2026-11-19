@@ -96,6 +96,26 @@ export class Fx {
     });
   }
 
+  fireball(pos: THREE.Vector3, size = 2) {
+    glow ??= glowTexture();
+    const colors = [0xfff3b0, 0xffc04d, 0xff7a1a, 0xe0400c, 0xffffff];
+    for (let i = 0; i < 14; i++) {
+      const m = new THREE.SpriteMaterial({ map: glow, color: colors[i % colors.length], transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+      const s = new THREE.Sprite(m);
+      const s0 = size * (0.35 + Math.random() * 0.4);
+      s.scale.setScalar(s0);
+      s.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * size * 0.6, (Math.random() - 0.2) * size * 0.4, (Math.random() - 0.5) * size * 0.6));
+      const life = 0.45 + Math.random() * 0.4;
+      this.add({
+        obj: s, vel: new THREE.Vector3((Math.random() - 0.5) * 2, 1 + Math.random() * 2.5, (Math.random() - 0.5) * 2),
+        life, max: life, gravity: -1, grow: 1.6 + Math.random(), baseScale: s0, fade: true, spin: 0,
+        mat: m as unknown as THREE.Material & { opacity: number },
+      });
+    }
+    this.smoke(pos.clone().setY(Math.max(0.5, pos.y - 0.5)), 10, 0x2e2e2e, size * 0.3);
+    this.burst(pos, 0xffa040, 16, { speed: 7, size: 0.1, up: 7, life: 0.6 });
+  }
+
   sprite(map: THREE.Texture, pos: THREE.Vector3, size: number, life: number, onUpdate?: (s: THREE.Sprite, k: number) => void) {
     const m = new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, depthTest: false });
     const s = new THREE.Sprite(m);

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { CARD_IDS, type CardId } from "../../../shared/cards";
+import { CARDS, type CardId } from "../../../shared/cards";
 
 export const ALLY = 0x3b8cff;
 export const ENEMY = 0xff4d4d;
@@ -9,7 +9,7 @@ const headCache = new Map<string, THREE.Texture>();
 
 export function loadHeads(): Promise<void> {
   return Promise.all(
-    CARD_IDS.map(
+    (Object.keys(CARDS) as CardId[]).map(
       (id) =>
         new Promise<void>((resolve) => {
           const img = new Image();
@@ -108,6 +108,7 @@ export function textTexture(
 export function fieldTexture(
   tilesX: number,
   tilesY: number,
+  colors: [string, string],
   paths: (g: CanvasRenderingContext2D, px: number) => void,
 ): THREE.CanvasTexture {
   const px = 48;
@@ -117,7 +118,7 @@ export function fieldTexture(
   const g = c.getContext("2d")!;
   for (let y = 0; y < tilesY; y++) {
     for (let x = 0; x < tilesX; x++) {
-      g.fillStyle = (x + y) % 2 === 0 ? "#79b94f" : "#6dad45";
+      g.fillStyle = (x + y) % 2 === 0 ? colors[0] : colors[1];
       g.fillRect(x * px, y * px, px, px);
     }
   }

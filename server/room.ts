@@ -1,8 +1,10 @@
-import { CARDS, DEFAULT_DECK, DECK_SIZE, type CardId } from "../shared/cards";
+import { CARD_IDS, DEFAULT_DECK, DECK_SIZE, type CardId } from "../shared/cards";
 import { DT } from "../shared/constants";
 import type { Mode, RoomInfo, RoomPlayer, ServerMsg, Team } from "../shared/protocol";
 import { Sim } from "../shared/sim";
 import { Bot } from "./bot";
+import { arenaFor } from "../shared/arenas";
+import { getProfile, recordResult } from "./profiles";
 
 export interface Client {
   id: string;
@@ -16,7 +18,7 @@ const BOT_NAMES = ["Bot Pascal", "Bot Hélène", "Bot Gérard", "Bot Sylvie", "B
 
 export function sanitizeDeck(deck: unknown): CardId[] {
   if (!Array.isArray(deck)) return DEFAULT_DECK.slice();
-  const ids = [...new Set(deck.filter((c): c is CardId => typeof c === "string" && c in CARDS))];
+  const ids = [...new Set(deck.filter((c): c is CardId => typeof c === "string" && CARD_IDS.includes(c as CardId)))];
   if (ids.length !== DECK_SIZE) return DEFAULT_DECK.slice();
   return ids;
 }
@@ -171,8 +173,9 @@ export class Room {
     }
     this.status = "playing";
     const players = this.slots.map((s) => ({ id: s.id, name: s.name, tm: s.team, bot: s.bot }));
+    const arena = Math.max(0, ...this.humans.map((s) => arenaFor(getProfile(s.name).trophies).id));
     for (const s of this.slots) {
-      s.client?.send({ type: "start", team: s.team, mode: this.mode, players, you: s.id });
+      s.client?.send({ type: "start", team: s.team, mode: this.mode, players, you: s.id, arena });
     }
     this.timer = setInterval(() => this.tick(), DT * 1000);
     this.changed();
@@ -202,7 +205,15 @@ export class Room {
       if (s.client) s.client.send(sim.snapshotFor(s.id, base));
     }
     if (sim.phase === "ended") {
-      this.broadcast({ type: "end", winner: sim.winner ?? -1, crowns: sim.crowns });
+      const winner = sim.winner ?? -1;
+      for (const s of this.slots) {
+        if (!s.client) continue;
+        const opponentsAllBots = this.slots.filter((o) => o.team !== s.team).every((o) => o.bot);
+        const result = winner === -1 ? "draw" : winner === s.team ? "win" : "loss";
+        const { delta, profile } = recordResult(s.name, result, opponentsAllBots);
+        s.client.send({ type: "end", winner, crowns: sim.crowns, trophies: { delta, total: profile.trophies } });
+        s.client.send({ type: "profile", trophies: profile.trophies, best: profile.best, wins: profile.wins, losses: profile.losses });
+      }
       this.stop();
       this.slots = this.slots.filter((s) => !s.bot || s.id.startsWith("bot-"));
       this.changed();

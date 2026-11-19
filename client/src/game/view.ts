@@ -10,6 +10,8 @@ import {
   Bar, createProjectileModel, createTowerModel, createUnitModel, type TowerModel, type UnitModel,
 } from "./models";
 import { ALLY, ENEMY, headTexture } from "./textures";
+import { themeFor, type Theme } from "./themes";
+import { cameraFor, getTilt, onTilt, setTilt } from "../settings";
 
 interface UnitView {
   id: number;
@@ -28,6 +30,7 @@ interface UnitView {
   flashT: number;
   spawnT: number;
   stepT: number;
+  jumping: boolean;
 }
 
 interface TowerView {
@@ -65,6 +68,8 @@ export interface ViewOptions {
   container: HTMLElement;
   overlay: HTMLElement;
   team: Team;
+  arena: number;
+  preview?: boolean;
   getInsets(): { top: number; bottom: number };
   onPlay(card: CardId, x: number, y: number): void;
   onSelect(card: CardId | null, dragging: boolean): void;
@@ -105,6 +110,11 @@ export class GameView {
   private ghostHead: THREE.Sprite;
   private zones = new THREE.Group();
   private resizeObs: ResizeObserver;
+  private theme: Theme;
+  private tilt = getTilt();
+  private tiltTarget = getTilt();
+  private offTilt: () => void;
+  private fitDist = 45;
 
   constructor(private opts: ViewOptions) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -112,16 +122,18 @@ export class GameView {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.theme = themeFor(opts.arena);
+    const th = this.theme;
+    this.renderer.toneMappingExposure = th.exposure;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     opts.container.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0x9fd4f5);
-    this.scene.fog = new THREE.Fog(0x9fd4f5, 60, 140);
+    this.scene.background = new THREE.Color(th.sky);
+    this.scene.fog = new THREE.Fog(th.sky, th.fogNear, th.fogFar);
 
-    const hemi = new THREE.HemisphereLight(0xdff1ff, 0x4d6b35, 1.15);
+    const hemi = new THREE.HemisphereLight(th.hemiSky, th.hemiGround, th.hemiIntensity);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff0d6, 2.1);
+    const sun = new THREE.DirectionalLight(th.sunColor, th.sunIntensity);
     sun.position.set(-14, 30, 10);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -136,7 +148,7 @@ export class GameView {
     sun.shadow.normalBias = 0.03;
     this.scene.add(sun);
 
-    this.arena = buildArena();
+    this.arena = buildArena(th);
     this.scene.add(this.arena.group);
     this.fx = new Fx(this.scene);
 
@@ -166,6 +178,8 @@ export class GameView {
     window.addEventListener("pointerup", this.onUp);
     window.addEventListener("pointercancel", this.onCancel);
     el.addEventListener("pointerleave", () => (this.pointer.inside = false));
+    el.addEventListener("wheel", this.onWheel, { passive: false });
+    this.offTilt = onTilt((t) => (this.tiltTarget = t));
     this.resizeObs = new ResizeObserver(() => this.resize());
     this.resizeObs.observe(opts.container);
     this.resize();
@@ -194,7 +208,9 @@ export class GameView {
     const topLim = 1 - (2 * insets.top) / h;
     const botLim = -1 + (2 * insets.bottom) / h;
     const portrait = h > w;
-    const pitch = THREE.MathUtils.degToRad(portrait ? 62 : 54);
+    const cfg = cameraFor(this.tilt, portrait);
+    cam.fov = cfg.fov;
+    const pitch = THREE.MathUtils.degToRad(cfg.pitch);
     const sign = this.opts.team === 0 ? 1 : -1;
     const dir = new THREE.Vector3(0, Math.sin(pitch), Math.cos(pitch) * sign);
     const target = new THREE.Vector3(0, 0, 0);
@@ -231,6 +247,10 @@ export class GameView {
       else lo = mid;
     }
     const m = measure(hi);
+    this.fitDist = hi;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = hi + this.theme.fogNear - 40;
+    fog.far = hi + this.theme.fogFar - 40;
     this.camBase.copy(cam.position);
     const desired = (topLim + botLim) / 2;
     const actual = (m.maxY + m.minY) / 2;
@@ -263,6 +283,7 @@ export class GameView {
       v.mhp = t.mhp;
       v.active = t.a;
       if (t.hp <= 0 && !v.model.destroyed) v.model.setDestroyed();
+      else if (t.hp > 0 && v.model.destroyed) v.model.restore();
     }
 
     seen.clear();
@@ -280,7 +301,7 @@ export class GameView {
         const yaw = Math.atan2(Math.cos(u.f), -Math.sin(u.f));
         v = {
           id: u.id, card, team: u.tm, model, bar, pos: target.clone(), target, yaw, hp: u.hp, mhp: u.mhp, st: u.st,
-          walk: Math.random() * 6, attackT: 0, flashT: 0, spawnT: 0, stepT: 0,
+          walk: Math.random() * 6, attackT: 0, flashT: 0, spawnT: 0, stepT: 0, jumping: false,
         };
         model.root.rotation.y = yaw;
         this.units.set(u.id, v);
@@ -427,6 +448,7 @@ export class GameView {
       }
       case "tower": {
         const p = toWorld(ev.x, ev.y, 2);
+        this.fx.fireball(p.clone().setY(3), ev.k === "king" ? 4.5 : 3.4);
         this.fx.burst(p, 0x8f897d, 40, { speed: 8, size: 0.3, up: 6, cube: true });
         this.fx.burst(p, 0xff9a3c, 16, { speed: 5, size: 0.2, up: 5 });
         this.fx.smoke(p, 16, 0x777777, 0.9);
@@ -435,6 +457,19 @@ export class GameView {
         const mine = ev.tm === this.opts.team;
         const crowns = ev.k === "king" ? "👑👑👑" : "👑";
         this.floatText(toWorld(ev.x, ev.y, 6.5), mine ? `Tour perdue` : `+${crowns}`, mine ? "#ff8a8a" : "#ffcf3f", 40);
+        break;
+      }
+      case "explode": {
+        const p = toWorld(ev.x, ev.y, 0.8);
+        this.fx.fireball(p, ev.r * 1.1);
+        this.fx.ring(toWorld(ev.x, ev.y), 0xff9a3c, 0.5, ev.r * 1.4, 0.6, 0.9);
+        this.fx.burst(p, 0x15171a, 16, { speed: 7, size: 0.22, up: 6, cube: true });
+        this.shake = Math.max(this.shake, 0.6);
+        this.floatText(toWorld(ev.x, ev.y, 4), "BOUM !", "#ff9a3c", 40);
+        break;
+      }
+      case "tiebreak": {
+        this.floatText(new THREE.Vector3(0, 6, 0), "Départage !", "#ffffff", 46);
         break;
       }
       case "smash": {
@@ -491,8 +526,28 @@ export class GameView {
     this.renderer.render(this.scene, this.camera);
   };
 
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const next = Math.min(1, Math.max(0, this.tiltTarget + e.deltaY * 0.0009));
+    this.tiltTarget = next;
+    this.wheelSave = 0.4;
+  };
+
+  private wheelSave = 0;
+
   private update(dt: number) {
-    this.arena.update(this.time);
+    this.arena.update(this.time, dt);
+    if (Math.abs(this.tilt - this.tiltTarget) > 0.0005) {
+      this.tilt += (this.tiltTarget - this.tilt) * Math.min(1, dt * 9);
+      if (Math.abs(this.tilt - this.tiltTarget) <= 0.0005) this.tilt = this.tiltTarget;
+      const w = this.opts.container.clientWidth || window.innerWidth;
+      const h = this.opts.container.clientHeight || window.innerHeight;
+      this.fitCamera(w, h);
+    }
+    if (this.wheelSave > 0) {
+      this.wheelSave -= dt;
+      if (this.wheelSave <= 0) setTilt(this.tiltTarget);
+    }
     const k = 1 - Math.exp(-dt * 14);
     const camQuat = this.camera.quaternion;
 
@@ -505,6 +560,24 @@ export class GameView {
       const moved = Math.hypot(v.pos.x - bx, v.pos.z - bz);
       const speed = moved / Math.max(dt, 1e-4);
       m.root.position.copy(v.pos);
+      if (v.card.unit?.jumpsRiver) {
+        const ay = ARENA_H / 2 - v.pos.z;
+        const lo = RIVER_Y - RIVER_HALF - 1.6;
+        const hi = RIVER_Y + RIVER_HALF + 1.6;
+        if (ay > lo && ay < hi) {
+          const k = (ay - lo) / (hi - lo);
+          m.root.position.y = Math.sin(k * Math.PI) * 2.4;
+          if (!v.jumping) {
+            v.jumping = true;
+            this.fx.burst(v.pos.clone().setY(0.2), 0x7a5634, 10, { speed: 3, size: 0.15, up: 2 });
+          }
+        } else if (v.jumping) {
+          v.jumping = false;
+          this.fx.burst(v.pos.clone().setY(0.2), 0x7a5634, 14, { speed: 4, size: 0.18, up: 2.5 });
+          this.shake = Math.max(this.shake, 0.15);
+        }
+      }
+      if (m.wheels) for (const wh of m.wheels) wh.rotation.x += (speed * dt) / 0.38;
 
       let dy = v.yaw - m.root.rotation.y;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
@@ -891,6 +964,7 @@ export class GameView {
     window.removeEventListener("pointermove", this.onMove);
     window.removeEventListener("pointerup", this.onUp);
     window.removeEventListener("pointercancel", this.onCancel);
+    this.offTilt();
     this.resizeObs.disconnect();
     this.fx.clear();
     for (const f of this.floaters) f.el.remove();

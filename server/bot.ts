@@ -70,7 +70,7 @@ export class Bot {
       }
       return;
     }
-    const ly = card === "natis" || card === "tordeux" ? 9 : 13.2;
+    const ly = card === "natis" || card === "tordeux" ? 9 : card === "tarit" ? 11 : 13.2;
     this.tryPlay(p, card, lane + (Math.random() - 0.5), ly);
   }
 

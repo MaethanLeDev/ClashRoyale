@@ -50,8 +50,9 @@ shared/     code commun client + serveur
   constants.ts  dimensions de l'arène, tours, caféine, durée
   sim.ts        moteur de jeu (déplacements, ciblage, combats, tours, sorts)
   rules.ts      règles de placement
+  arenas.ts     arènes et paliers de trophées
   protocol.ts   messages réseau
-server/     serveur HTTP + WebSocket, salons, bots
+server/     serveur HTTP + WebSocket, salons, bots, profils (trophées)
 client/     interface et rendu 3D
   src/game/     arène, modèles, effets, vue
   public/       photos des cartes (cards/) et têtes rondes (heads/)
@@ -70,9 +71,32 @@ tools/      script de préparation des photos, test de simulation
 | Tordeux | 4 | Tireur à distance |
 | Imad | 4 | Bâtiment défensif (QG) |
 | Natis | 5 | Tank qui vise les bâtiments |
+| Tarit | 7 | Duster qui saute la rivière et vise les tours ; explose à sa mort et Tarit en sort |
 | Super Samy | 10 | Géant : rase toute tour qu'il touche |
 
 Un deck contient 8 cartes, modifiable dans « Mon deck ».
+
+## Arènes et trophées
+
+Victoire +30 trophées, défaite −20 (moitié si l'adversaire n'est composé que de bots). Les trophées sont stockés par pseudo dans `data/profiles.json` sur la machine qui héberge le serveur.
+
+| Arène | Trophées |
+|---|---|
+| Campus du Bourget | 0 |
+| Plage du Lac | 300 |
+| Station des Partiels | 600 |
+| Soirée BDE | 1000 |
+| Volcan des Rattrapages | 1500 |
+
+La partie se joue dans l'arène du joueur humain le mieux classé.
+
+## Fin de partie
+
+Si les couronnes sont à égalité après les prolongations, toutes les tours perdent des PV de plus en plus vite : la première qui tombe désigne le perdant.
+
+## Caméra
+
+Molette sur PC, ou bouton 🎥 en jeu et « Réglages → Caméra » depuis l'accueil (avec aperçu). Le réglage combine inclinaison et focale (effet « dolly zoom ») : vue quasi du dessus d'un côté, vue rapprochée en perspective de l'autre.
 
 ## Ajouter une carte
 

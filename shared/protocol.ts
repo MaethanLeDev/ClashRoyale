@@ -3,7 +3,7 @@ import type { TowerKind } from "./constants";
 
 export type Mode = "1v1" | "2v2";
 export type Team = 0 | 1;
-export type Phase = "countdown" | "playing" | "overtime" | "ended";
+export type Phase = "countdown" | "playing" | "overtime" | "tiebreak" | "ended";
 
 export const UNIT_STATE = { deploying: 0, moving: 1, attacking: 2, frozen: 3, idle: 4 } as const;
 
@@ -55,7 +55,9 @@ export type GameEvent =
   | { e: "tower"; id: number; tm: Team; x: number; y: number; k: TowerKind }
   | { e: "spell"; c: CardId; x: number; y: number; r: number; tm: Team }
   | { e: "spellCast"; c: CardId; x: number; y: number; r: number; tm: Team; delay: number }
-  | { e: "smash"; id: number; tid: number; x: number; y: number };
+  | { e: "smash"; id: number; tid: number; x: number; y: number }
+  | { e: "explode"; x: number; y: number; r: number; tm: Team }
+  | { e: "tiebreak" };
 
 export interface StateMsg {
   type: "state";
@@ -108,8 +110,9 @@ export type ServerMsg =
   | { type: "welcome"; id: string }
   | { type: "rooms"; rooms: RoomInfo[] }
   | { type: "room"; room: RoomInfo | null }
-  | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string }
+  | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string; arena: number }
+  | { type: "profile"; trophies: number; best: number; wins: number; losses: number }
   | StateMsg
-  | { type: "end"; winner: Team | -1; crowns: [number, number] }
+  | { type: "end"; winner: Team | -1; crowns: [number, number]; trophies?: { delta: number; total: number } }
   | { type: "emote"; from: string; name: string; tm: Team; emote: string }
   | { type: "error"; msg: string };

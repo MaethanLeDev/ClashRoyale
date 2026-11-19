@@ -8,6 +8,7 @@ import { CARDS } from "../shared/cards";
 import { GAME_NAME } from "../shared/constants";
 import type { ClientMsg, ServerMsg } from "../shared/protocol";
 import { Room, sanitizeDeck, type Client } from "./room";
+import { getProfile } from "./profiles";
 
 const PORTS = process.env.PORT ? [Number(process.env.PORT)] : [3000, 8080, 8000, 5050, 4321, 0];
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)), "dist");
@@ -103,6 +104,10 @@ wss.on("connection", (ws: WebSocket) => {
       case "hello":
         client.name = String(msg.name ?? "").trim().slice(0, 16) || "Joueur";
         if (msg.deck) client.deck = sanitizeDeck(msg.deck);
+        {
+          const p = getProfile(client.name);
+          client.send({ type: "profile", trophies: p.trophies, best: p.best, wins: p.wins, losses: p.losses });
+        }
         publishRooms();
         break;
       case "deck":

@@ -43,6 +43,9 @@ export interface Unit extends Body {
   life: number;
   px: number;
   py: number;
+  stuck: number;
+  sidestep: number;
+  side: number;
 }
 
 export interface Tower extends Body {
@@ -105,6 +108,7 @@ export class Sim {
   overtime = false;
   crowns: [number, number] = [0, 0];
   winner: Team | -1 | null = null;
+  tiebreakT = 0;
 
   players = new Map<string, SimPlayer>();
   units: Unit[] = [];
@@ -215,7 +219,7 @@ export class Sim {
       id: this.nextId++, team, x, y, px: x, py: y, radius: s.radius, hp: s.hp, maxHp: s.hp, frozen: 0,
       card: card.id, stats: s, building: card.kind === "building", mass: s.mass, deployLeft: deployTime,
       cooldown: s.firstHit, targetId: null, locked: false, facing: team === 0 ? Math.PI / 2 : -Math.PI / 2,
-      state: UNIT_STATE.deploying, life: s.lifetime ?? 0,
+      state: UNIT_STATE.deploying, life: s.lifetime ?? 0, stuck: 0, sidestep: 0, side: this.nextId % 2 ? 1 : -1,
     };
     this.clampPosition(u);
     this.units.push(u);
@@ -249,6 +253,10 @@ export class Sim {
     if (this.phase === "countdown") {
       this.countdown -= dt;
       if (this.countdown <= 0) this.phase = "playing";
+      return;
+    }
+    if (this.phase === "tiebreak") {
+      this.stepTiebreak(dt);
       return;
     }
     this.time += dt;
@@ -329,6 +337,7 @@ export class Sim {
   }
 
   private pathDist(u: Unit, t: Tower): number {
+    if (u.stats.jumpsRiver) return Math.hypot(t.x - u.x, t.y - u.y);
     const sameSide = (u.y < RIVER_Y) === (t.y < RIVER_Y);
     if (sameSide) return Math.hypot(t.x - u.x, t.y - u.y);
     let best = Infinity;
@@ -344,6 +353,7 @@ export class Sim {
   }
 
   private waypoint(u: Unit, tx: number, ty: number): [number, number] {
+    if (u.stats.jumpsRiver) return [tx, ty];
     const inBand = u.y > RIVER_LO - 0.05 && u.y < RIVER_HI + 0.05;
     const side = u.y < RIVER_Y ? 0 : 1;
     const tside = ty < RIVER_Y ? 0 : 1;
@@ -419,13 +429,52 @@ export class Sim {
       const dy = wy - u.y;
       const d = Math.hypot(dx, dy);
       if (d > 1e-4) {
+        let [mx, my] = this.avoid(u, dx / d, dy / d, target);
+        if (u.sidestep > 0) {
+          u.sidestep -= dt;
+          const a = 1.1 * u.side;
+          const c = Math.cos(a);
+          const sn = Math.sin(a);
+          [mx, my] = [mx * c - my * sn, mx * sn + my * c];
+        }
         const stepLen = Math.min(d, s.speed * dt);
-        u.x += (dx / d) * stepLen;
-        u.y += (dy / d) * stepLen;
-        u.facing = Math.atan2(dy, dx);
+        u.x += mx * stepLen;
+        u.y += my * stepLen;
+        u.facing = Math.atan2(my, mx);
       }
       u.state = UNIT_STATE.moving;
     }
+  }
+
+  private avoid(u: Unit, dx: number, dy: number, target: Unit | Tower): [number, number] {
+    let sx = 0;
+    let sy = 0;
+    const consider = (o: Body) => {
+      if (o.id === target.id || o.id === u.id) return;
+      const ox = o.x - u.x;
+      const oy = o.y - u.y;
+      const R = o.radius + u.radius + 0.2;
+      const look = R + 2.2;
+      const t = ox * dx + oy * dy;
+      if (t <= 0 || t > look) return;
+      const c = dx * oy - dy * ox;
+      if (Math.abs(c) >= R) return;
+      const w = (1 - Math.abs(c) / R) * (1 - t / look) * 2.2;
+      if (c >= 0) {
+        sx += dy * w;
+        sy += -dx * w;
+      } else {
+        sx += -dy * w;
+        sy += dx * w;
+      }
+    };
+    for (const t of this.towers) if (t.alive) consider(t);
+    for (const b of this.units) if (b.building && b.hp > 0) consider(b);
+    if (sx === 0 && sy === 0) return [dx, dy];
+    const nx = dx + sx;
+    const ny = dy + sy;
+    const n = Math.hypot(nx, ny) || 1;
+    return [nx / n, ny / n];
   }
 
   private attack(u: Unit, target: Unit | Tower) {
@@ -472,6 +521,18 @@ export class Sim {
           ny = dy / d;
         }
         const overlap = (min - d) * 0.5;
+        if (
+          a.team !== b.team && !a.building && !b.building &&
+          a.targetId !== b.id && b.targetId !== a.id &&
+          a.state === UNIT_STATE.moving && b.state === UNIT_STATE.moving
+        ) {
+          const nearRiver = Math.abs(a.y - RIVER_Y) < 2.6 + a.radius || Math.abs(b.y - RIVER_Y) < 2.6 + b.radius;
+          const side = a.x <= b.x ? -1 : 1;
+          const lat = nearRiver ? 0 : Math.min(overlap, 0.04);
+          a.x += side * lat;
+          b.x -= side * lat;
+          continue;
+        }
         const ma = a.building ? Infinity : a.mass;
         const mb = b.building ? Infinity : b.mass;
         let wa: number;
@@ -507,12 +568,26 @@ export class Sim {
         }
       }
       this.clampPosition(u);
+      if (u.state === UNIT_STATE.moving) {
+        const moved = Math.hypot(u.x - u.px, u.y - u.py);
+        const expected = u.stats.speed * (1 / 20);
+        if (moved < expected * 0.3) u.stuck += 1 / 20;
+        else u.stuck = Math.max(0, u.stuck - 2 / 20);
+        if (u.stuck > 0.45 && u.sidestep <= 0) {
+          u.sidestep = 0.7;
+          u.stuck = 0;
+          u.side = -u.side;
+        }
+      } else {
+        u.stuck = 0;
+      }
     }
   }
 
   private clampPosition(u: Unit) {
     u.x = Math.max(u.radius * 0.5, Math.min(ARENA_W - u.radius * 0.5, u.x));
     u.y = Math.max(u.radius * 0.5, Math.min(ARENA_H - u.radius * 0.5, u.y));
+    if (u.stats.jumpsRiver && u.deployLeft <= 0) return;
     if (u.y > RIVER_LO && u.y < RIVER_HI) {
       const bx = BRIDGES_X.reduce((a, b) => (Math.abs(b - u.x) < Math.abs(a - u.x) ? b : a));
       const half = Math.max(0.15, BRIDGE_HALF - u.radius * 0.3);
@@ -627,11 +702,37 @@ export class Sim {
       }
     }
     const alive: Unit[] = [];
+    const dead: Unit[] = [];
     for (const u of this.units) {
       if (u.hp > 0) alive.push(u);
-      else this.emit({ e: "die", id: u.id, x: r2(u.x), y: r2(u.y), c: u.card });
+      else {
+        dead.push(u);
+        this.emit({ e: "die", id: u.id, x: r2(u.x), y: r2(u.y), c: u.card });
+      }
     }
     this.units = alive;
+    for (const u of dead) {
+      const dd = u.stats.deathDamage;
+      if (dd) {
+        this.emit({ e: "explode", x: r2(u.x), y: r2(u.y), r: dd.radius, tm: u.team });
+        for (const v of this.units) {
+          if (v.team !== u.team && v.hp > 0 && Math.hypot(v.x - u.x, v.y - u.y) - v.radius <= dd.radius) {
+            this.damage(v, dd.damage, "explode");
+          }
+        }
+        for (const t of this.towers) {
+          if (t.team !== u.team && t.alive && Math.hypot(t.x - u.x, t.y - u.y) - t.radius <= dd.radius) {
+            this.damage(t, dd.damage, "explode");
+          }
+        }
+      }
+      if (u.stats.deathSpawn) {
+        const x = u.x;
+        let y = u.y;
+        if (y > RIVER_LO - 0.3 && y < RIVER_HI + 0.3) y = u.team === 0 ? RIVER_HI + 0.4 : RIVER_LO - 0.4;
+        this.spawnUnit(CARDS[u.stats.deathSpawn], u.team, x, y, 0.4);
+      }
+    }
   }
 
   private checkTime() {
@@ -646,11 +747,44 @@ export class Sim {
       this.timeLeft = OVERTIME;
       return;
     }
-    const minHp = (team: Team) =>
-      Math.min(...this.towers.filter((t) => t.team === team && t.alive).map((t) => t.hp / t.maxHp), 1);
-    const a = minHp(0);
-    const b = minHp(1);
-    this.finish(Math.abs(a - b) < 1e-6 ? -1 : a > b ? 0 : 1);
+    this.phase = "tiebreak";
+    this.timeLeft = 0;
+    this.tiebreakT = 0;
+    this.projectiles = [];
+    this.spells = [];
+    this.emit({ e: "tiebreak" });
+  }
+
+  private stepTiebreak(dt: number) {
+    this.tiebreakT += dt;
+    if (this.tiebreakT < 1.2) return;
+    const t = this.tiebreakT - 1.2;
+    const drain = (250 + 700 * t + 250 * t * t) * dt;
+    for (const tw of this.towers) if (tw.alive) tw.hp -= drain;
+    const fallen = this.towers.filter((tw) => tw.alive && tw.hp <= 0);
+    if (!fallen.length) return;
+    const worst = (team: Team) => Math.min(0, ...fallen.filter((tw) => tw.team === team).map((tw) => tw.hp));
+    const w0 = worst(0);
+    const w1 = worst(1);
+    let loser: Team | -1;
+    if (w0 < 0 && w1 < 0) loser = Math.abs(w0 - w1) < 1e-6 ? -1 : w0 < w1 ? 0 : 1;
+    else loser = w0 < 0 ? 0 : 1;
+    for (const tw of fallen) {
+      if (loser !== -1 && tw.team !== loser) {
+        tw.hp = 1;
+        continue;
+      }
+      tw.alive = false;
+      tw.hp = 0;
+      this.emit({ e: "tower", id: tw.id, tm: tw.team, x: tw.x, y: tw.y, k: tw.kind });
+    }
+    if (loser === -1) {
+      this.finish(-1);
+      return;
+    }
+    const winner: Team = loser === 0 ? 1 : 0;
+    this.crowns[winner] += 1;
+    this.finish(winner);
   }
 
   private finish(winner: Team | -1) {
@@ -686,7 +820,7 @@ export class Sim {
       type: "state", t: r2(this.time),
       phase: this.phase,
       left: this.phase === "countdown" ? Math.ceil(this.countdown) : Math.max(0, Math.ceil(this.timeLeft)),
-      dbl: this.doubleElixir, crowns: [this.crowns[0], this.crowns[1]],
+      dbl: this.doubleElixir && this.phase !== "tiebreak", crowns: [this.crowns[0], this.crowns[1]],
       units, towers, proj, ev: this.events.slice(), winner: this.winner,
     };
   }

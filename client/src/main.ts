@@ -6,6 +6,9 @@ import { GameView } from "./game/view";
 import { loadHeads } from "./game/textures";
 import { Hud } from "./hud";
 import { Net } from "./net";
+import { ARENAS, arenaFor } from "../../shared/arenas";
+import { createPreview, type Preview } from "./preview";
+import { getTilt, onTilt, setTilt } from "./settings";
 import { cardEl, h, toast } from "./ui";
 
 const ui = document.getElementById("ui")!;
@@ -45,7 +48,8 @@ const app = {
   myId: "",
   rooms: [] as RoomInfo[],
   room: null as RoomInfo | null,
-  screen: "home" as "home" | "deck" | "room" | "game",
+  screen: "home" as "home" | "deck" | "room" | "game" | "road",
+  profile: { trophies: 0, best: 0, wins: 0, losses: 0 },
   connected: false,
   game: null as { view: GameView; hud: Hud } | null,
 };
@@ -101,6 +105,16 @@ function renderHome() {
 
   const roomsList = h("div", { class: "rooms", id: "rooms" });
   const deckPreview = h("div", { class: "deck-preview" }, ...app.deck.map((c) => cardEl(c, { showName: false })));
+  const arena = arenaFor(app.profile.trophies);
+  const profileBar = h(
+    "div",
+    { class: "profile-bar", id: "profile-bar", onclick: renderRoad, style: { "--a1": arena.colors[0], "--a2": arena.colors[1] } as Record<string, string> },
+    h("div", { class: "icon" }, arena.icon),
+    h("div", { class: "info" }, h("div", { class: "trophies" }, `🏆 ${app.profile.trophies}`), h("div", { class: "arena-name" }, `Arène ${arena.id + 1} · ${arena.name}`)),
+    h("span", { class: "btn small ghost" }, "Voie des trophées"),
+  );
+  profileBar.style.setProperty("--a1", arena.colors[0]);
+  profileBar.style.setProperty("--a2", arena.colors[1]);
 
   const el = h(
     "div",
@@ -120,6 +134,7 @@ function renderHome() {
             "div",
             { class: "panel" },
             h("h2", {}, "Joueur"),
+            profileBar,
             h("div", { class: "field" }, h("label", {}, "Pseudo"), pseudo),
             h("h2", { style: { marginTop: "18px" } }, "Jouer"),
             h(
@@ -140,6 +155,11 @@ function renderHome() {
             { class: "panel" },
             h("div", { class: "topbar", style: { marginBottom: "10px" } }, h("h2", { style: { margin: "0", flex: "1" } }, "Mon deck"), h("button", { class: "btn small ghost", onclick: renderDeck }, "Voir les cartes")),
             deckPreview,
+          ),
+          h(
+            "div",
+            { class: "panel" },
+            h("div", { class: "topbar", style: { marginBottom: "0" } }, h("h2", { style: { margin: "0", flex: "1" } }, "Réglages"), h("button", { class: "btn small ghost", onclick: () => showCameraSettings() }, "🎥 Caméra")),
           ),
         ),
         h(
@@ -369,6 +389,105 @@ function renderDeck() {
   updateConn();
 }
 
+// ---------- Trophées & réglages ----------
+
+function previewModal(title: string, arena: number, extra: HTMLElement | null, wide = false) {
+  let preview: Preview | null = null;
+  const box = h("div", { class: `preview-box ${wide ? "wide" : ""}` });
+  const close = () => {
+    preview?.dispose();
+    backdrop.remove();
+  };
+  const backdrop = h(
+    "div",
+    { class: "modal-backdrop", onclick: (e: Event) => e.target === backdrop && close() },
+    h(
+      "div",
+      { class: "modal panel" },
+      h("h2", {}, title),
+      box,
+      extra,
+      h("div", { style: { textAlign: "right", marginTop: "14px" } }, h("button", { class: "btn small", onclick: close }, "Fermer")),
+    ),
+  );
+  ui.appendChild(backdrop);
+  requestAnimationFrame(() => (preview = createPreview(box, arena)));
+}
+
+function showCameraSettings() {
+  const slider = h("input", { type: "range", min: "0", max: "100", value: String(Math.round(getTilt() * 100)) }) as HTMLInputElement;
+  slider.addEventListener("input", () => setTilt(Number(slider.value) / 100));
+  const off = onTilt((t) => (slider.value = String(Math.round(t * 100))));
+  const extra = h(
+    "div",
+    {},
+    h("div", { class: "tilt-row" }, h("span", {}, "Vue du dessus"), slider, h("span", {}, "Immersive")),
+    h("div", { class: "help", style: { marginTop: "10px" } }, "Sur PC, la molette de la souris règle aussi la caméra en pleine partie. En jeu, le bouton 🎥 ouvre ce réglage."),
+  );
+  previewModal("Caméra", arenaFor(app.profile.trophies).id, extra);
+  const obs = new MutationObserver(() => {
+    if (!extra.isConnected) {
+      off();
+      obs.disconnect();
+    }
+  });
+  obs.observe(ui, { childList: true });
+}
+
+function renderRoad() {
+  app.screen = "road";
+  const t = app.profile.trophies;
+  const steps: HTMLElement[] = [];
+  ARENAS.forEach((a, i) => {
+    const next = ARENAS[i + 1];
+    const unlocked = t >= a.trophies;
+    const current = unlocked && (!next || t < next.trophies);
+    const step = h(
+      "div",
+      { class: `road-step ${unlocked ? "" : "locked"} ${current ? "current" : ""}` },
+      h("div", { class: "big-icon" }, a.icon),
+      h("div", {}, h("h3", {}, `Arène ${a.id + 1} · ${a.name}`), h("p", {}, a.tagline)),
+      h(
+        "div",
+        { class: "actions", style: { display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" } },
+        h("div", { class: "req" }, unlocked ? (current ? "Tu es ici" : "Débloquée") : `🏆 ${a.trophies}`),
+        h("button", { class: "btn small ghost", onclick: () => previewModal(a.name, a.id, null, true) }, "Aperçu 3D"),
+      ),
+    );
+    step.style.setProperty("--a1", a.colors[0]);
+    step.style.setProperty("--a2", a.colors[1]);
+    steps.push(step);
+    if (next) {
+      const span = next.trophies - a.trophies;
+      const frac = Math.max(0, Math.min(1, (t - a.trophies) / span));
+      const fill = h("div", { class: "fill" });
+      fill.style.height = `${frac * 100}%`;
+      steps.push(h("div", { class: "road-link" }, fill));
+    }
+  });
+  const p = app.profile;
+  mount(
+    h(
+      "div",
+      { class: "screen" },
+      h(
+        "div",
+        { class: "screen-inner", style: { maxWidth: "720px" } },
+        h("div", { class: "topbar" }, h("button", { class: "btn small ghost", onclick: renderHome }, "← Retour"), h("h1", {}, "Voie des trophées")),
+        h(
+          "div",
+          { class: "panel help", style: { marginBottom: "18px" } },
+          h("b", {}, `🏆 ${p.trophies} trophées`),
+          ` · record ${p.best} · ${p.wins} victoires, ${p.losses} défaites. Victoire +30, défaite −20 (moitié contre des bots). La partie se joue dans l'arène du joueur le mieux classé.`,
+        ),
+        h("div", { class: "road" }, ...steps),
+      ),
+      connBadge,
+    ),
+  );
+  updateConn();
+}
+
 // ---------- Room ----------
 
 function renderRoom() {
@@ -433,7 +552,7 @@ function renderRoom() {
 
 // ---------- Game ----------
 
-function startGame(team: Team, players: PlayerSnap[]) {
+function startGame(team: Team, players: PlayerSnap[], arena: number) {
   stopGame();
   app.screen = "game";
   current?.remove();
@@ -456,6 +575,7 @@ function startGame(team: Team, players: PlayerSnap[]) {
     container: stage,
     overlay: hud.overlay,
     team,
+    arena,
     getInsets: () => ({ top: hud.topHeight(), bottom: hud.bottomHeight() }),
     onPlay: (card, x, y) => net.send({ type: "play", card, x, y }),
     onSelect: (card, dragging) => hud.setSelected(card, dragging),
@@ -503,7 +623,7 @@ net.on((msg: ServerMsg) => {
       else if (app.screen === "room") renderHome();
       break;
     case "start":
-      startGame(msg.team, msg.players);
+      startGame(msg.team, msg.players, msg.arena ?? 0);
       break;
     case "state":
       if (app.game) {
@@ -512,7 +632,12 @@ net.on((msg: ServerMsg) => {
       }
       break;
     case "end":
-      app.game?.hud.showEnd(msg.winner, msg.crowns);
+      app.game?.hud.showEnd(msg.winner, msg.crowns, msg.trophies);
+      break;
+    case "profile":
+      app.profile = { trophies: msg.trophies, best: msg.best, wins: msg.wins, losses: msg.losses };
+      if (app.screen === "home") renderHome();
+      if (app.screen === "road") renderRoad();
       break;
     case "emote":
       app.game?.view.showEmote(msg.tm, msg.name, msg.emote);

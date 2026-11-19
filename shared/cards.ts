@@ -1,4 +1,4 @@
-export type CardId = "midas" | "valere" | "samy" | "tordeux" | "natis" | "goutier" | "imad" | "niels" | "nazar";
+export type CardId = "midas" | "valere" | "samy" | "tordeux" | "natis" | "goutier" | "imad" | "niels" | "nazar" | "tarit" | "taritPilot";
 
 export type CardKind = "troop" | "building" | "spell";
 
@@ -18,6 +18,9 @@ export interface UnitStats {
   projectile?: { speed: number; kind: string };
   towerKiller?: boolean;
   towerDamageMult?: number;
+  jumpsRiver?: boolean;
+  deathDamage?: { radius: number; damage: number };
+  deathSpawn?: CardId;
   height: number;
   lifetime?: number;
 }
@@ -33,6 +36,7 @@ export interface SpellStats {
 export interface CardDef {
   id: CardId;
   kind: CardKind;
+  hidden?: boolean;
   name: string;
   title: string;
   description: string;
@@ -52,6 +56,7 @@ export interface CardDef {
     cape?: number;
     weapon?: "sword" | "dagger" | "finger" | "pickaxe";
     building?: boolean;
+    vehicle?: boolean;
   };
 }
 
@@ -219,11 +224,49 @@ export const CARDS: Record<CardId, CardDef> = {
     },
     look: { body: 0x1d2a4a, accent: 0x9ec3ff, scale: 1, weapon: "pickaxe" },
   },
+  tarit: {
+    id: "tarit",
+    kind: "troop",
+    name: "Tarit",
+    title: "Tarit et sa Duster",
+    description: "Légende du parking au volant de sa Duster noire. Il fonce droit sur les tours et saute par-dessus la rivière. Quand la Duster rend l'âme, elle explose et Tarit sort pour taper tout le monde.",
+    cost: 7,
+    rarity: "légendaire",
+    role: "Véhicule",
+    count: 1,
+    spawnRadius: 0,
+    deployAnywhere: false,
+    unit: {
+      hp: 2400, damage: 260, hitSpeed: 1.4, firstHit: 0.5, speed: 1.5, range: 0.8, sight: 7,
+      radius: 0.95, mass: 20, targetsBuildingsOnly: true, height: 1.8, jumpsRiver: true,
+      deathDamage: { radius: 2.2, damage: 220 }, deathSpawn: "taritPilot",
+    },
+    look: { body: 0x121417, accent: 0xc0c4cc, scale: 1, vehicle: true },
+  },
+  taritPilot: {
+    id: "taritPilot",
+    kind: "troop",
+    hidden: true,
+    name: "Tarit",
+    title: "Tarit à pied",
+    description: "Sorti de sa Duster en flammes, Tarit tape tout ce qui passe.",
+    cost: 0,
+    rarity: "légendaire",
+    role: "Combattant",
+    count: 1,
+    spawnRadius: 0,
+    deployAnywhere: false,
+    unit: {
+      hp: 600, damage: 150, hitSpeed: 1.1, firstHit: 0.3, speed: 1.3, range: 0.7, sight: 5.5,
+      radius: 0.45, mass: 4, targetsBuildingsOnly: false, height: 1.5,
+    },
+    look: { body: 0xc8b496, accent: 0x8a7458, scale: 1 },
+  },
 };
 
 
 
-export const CARD_IDS = Object.keys(CARDS) as CardId[];
+export const CARD_IDS = (Object.keys(CARDS) as CardId[]).filter((c) => !CARDS[c].hidden);
 
 export const DECK_SIZE = 8;
 
