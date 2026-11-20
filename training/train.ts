@@ -143,7 +143,8 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
   let generations = compatible ? existing!.meta.generations : 0;
   let totalGames = compatible ? existing!.meta.games : 0;
   let lastWinRate = compatible ? existing!.meta.winRateVsHeuristic : 0;
-  let bestWinRate = published && published.params.length === n ? published.meta.winRateVsHeuristic : -1;
+  let lastScore = 0;
+  let bestScore = published && published.params.length === n ? 0 : -1;
 
   console.log(`\n=== ${style.label} (arène ${style.arena + 1}, style "${style.id}") ===`);
   console.log(compatible ? `Reprise : ${generations} générations déjà faites, ${totalGames} parties.` : "Nouveau cerveau, on part de zéro.");
@@ -151,10 +152,14 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
 
   const league: OpponentSpec[] = [{ kind: "heuristic" }];
   const others: OpponentSpec[] = [];
+  const otherNames: string[] = [];
   for (const s of STYLES) {
     if (s.id === style.id) continue;
     const b = loadBrain(s.id);
-    if (b && b.params.length === n) others.push({ kind: "brain", params: Float32Array.from(b.params), layers: b.layers, deck: b.deck });
+    if (b && b.params.length === n) {
+      others.push({ kind: "brain", params: Float32Array.from(b.params), layers: b.layers, deck: b.deck });
+      otherNames.push(s.label);
+    }
   }
   const snapshots: OpponentSpec[] = [];
   const rebuildLeague = () => {
@@ -178,38 +183,52 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
   const rng = mulberry32((Date.now() ^ (style.arena * 7919)) >>> 0);
   mkdirSync(LOGS, { recursive: true });
   const csv = resolve(LOGS, `${style.id}.csv`);
-  if (!existsSync(csv)) appendFileSync(csv, "date,generation,games,meanFitness,winRateVsHeuristic,preshotsPerGame,anticipationsPerGame,gamesPerSecond\n");
+  if (!existsSync(csv)) appendFileSync(csv, "date,generation,games,meanFitness,winRateVsHeuristic,preshotsPerGame,anticipationsPerGame,gamesPerSecond,leagueScore\n");
 
   const pickOpp = (): number => {
     const r = rng();
     const isBoss = style.id === "boss";
-    if (r < (isBoss ? 0.25 : 0.45) || league.length === 1) return 0;
-    if (others.length && r < (isBoss ? 0.65 : 0.65)) return 1 + Math.floor(rng() * others.length);
+    if (r < (isBoss ? 0.2 : 0.4) || league.length === 1) return 0;
+    if (others.length && r < (isBoss ? 0.7 : 0.65)) return 1 + Math.floor(rng() * others.length);
     if (snapshots.length) return 1 + others.length + Math.floor(rng() * snapshots.length);
     return 0;
   };
 
-  const evaluate = async (games: number): Promise<number> => {
+  const evaluate = async (gamesPerOpponent: number): Promise<{ vsHeuristic: number; score: number; detail: string }> => {
     pool.broadcast({ type: "theta", theta });
-    const per = Math.ceil(games / pool.workers.length);
+    const opponents = 1 + others.length;
+    const chunks = Math.max(1, Math.ceil(pool.workers.length / opponents));
+    const per = Math.ceil(gamesPerOpponent / chunks);
     const jobs: Promise<WorkerOut>[] = [];
-    for (let w = 0; w < pool.workers.length; w++) {
-      const list = Array.from({ length: per }, (_, i) => ({ seed: (rng() * 2 ** 31) >>> 0, opp: 0, side: ((w + i) % 2) as Team }));
-      jobs.push(pool.run({ type: "job", id: -1, noiseSeed: 0, sign: 0, games: list }));
+    for (let o = 0; o < opponents; o++) {
+      for (let c = 0; c < chunks; c++) {
+        const list = Array.from({ length: per }, (_, i) => ({ seed: (rng() * 2 ** 31) >>> 0, opp: o, side: ((c + i) % 2) as Team }));
+        jobs.push(pool.run({ type: "job", id: o, noiseSeed: 0, sign: 0, games: list }));
+      }
     }
     const res = await Promise.all(jobs);
-    const wins = res.reduce((s, r) => s + r.wins, 0);
-    const total = res.reduce((s, r) => s + r.games, 0);
-    totalGames += total;
-    return wins / total;
+    const rates: number[] = [];
+    for (let o = 0; o < opponents; o++) {
+      const mine = res.filter((r) => r.id === o);
+      const games = mine.reduce((s, r) => s + r.games, 0);
+      rates.push(mine.reduce((s, r) => s + r.wins, 0) / Math.max(1, games));
+      totalGames += games;
+    }
+    const names = ["classique", ...otherNames];
+    return {
+      vsHeuristic: rates[0],
+      score: rates.reduce((s, r) => s + r, 0) / rates.length,
+      detail: rates.map((r, i) => `${names[i]} ${Math.round(r * 100)} %`).join(", "),
+    };
   };
 
-  if (bestWinRate >= 0 && published) {
+  if (bestScore >= 0 && published) {
     const current = theta;
     theta = Float32Array.from(published.params);
-    bestWinRate = await evaluate(Math.max(192, pool.workers.length * 16));
+    const ev = await evaluate(Math.max(96, pool.workers.length * 8));
+    bestScore = ev.score;
     theta = current;
-    console.log(`Cerveau publié réévalué : ${(bestWinRate * 100).toFixed(1)} % de victoires, c'est le record à battre.\n`);
+    console.log(`Cerveau publié réévalué : score ${(bestScore * 100).toFixed(1)} % (${ev.detail}). C'est le record à battre.\n`);
   }
 
   let lastLog = 0;
@@ -261,24 +280,29 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
 
     const now = Date.now();
     if (now - lastSave > 90_000 || now >= deadline) {
-      lastWinRate = await evaluate(Math.max(96, pool.workers.length * 8));
+      const ev = await evaluate(Math.max(48, pool.workers.length * 4));
+      lastWinRate = ev.vsHeuristic;
+      lastScore = ev.score;
       lastSave = Date.now();
       const brain: BrainFile = {
         version: 1, style: style.id, label: style.label, deck: style.deck, cards: AI_CARDS, layers,
         params: Array.from(theta, (x) => Math.round(x * 1e5) / 1e5),
-        meta: { generations, games: totalGames, winRateVsHeuristic: Math.round(lastWinRate * 1000) / 1000, updatedAt: new Date().toISOString() },
+        meta: {
+          generations, games: totalGames, winRateVsHeuristic: Math.round(lastWinRate * 1000) / 1000,
+          leagueScore: Math.round(lastScore * 1000) / 1000, updatedAt: new Date().toISOString(),
+        },
       };
       saveBrain(brain, true);
-      const improved = lastWinRate >= bestWinRate;
+      const improved = lastScore >= bestScore;
       if (improved) {
-        bestWinRate = lastWinRate;
+        bestScore = lastScore;
         saveBrain(brain);
       }
       const gps = gamesThisRun / ((now - start) / 1000);
-      appendFileSync(csv, `${brain.meta.updatedAt},${generations},${totalGames},${meanFit.toFixed(4)},${lastWinRate.toFixed(3)},${preshots.toFixed(3)},${anticipations.toFixed(3)},${gps.toFixed(1)}\n`);
+      appendFileSync(csv, `${brain.meta.updatedAt},${generations},${totalGames},${meanFit.toFixed(4)},${lastWinRate.toFixed(3)},${preshots.toFixed(3)},${anticipations.toFixed(3)},${gps.toFixed(1)},${lastScore.toFixed(3)}\n`);
       console.log(
-        `  💾 test : ${(lastWinRate * 100).toFixed(1)} % de victoires contre le bot classique` +
-          (improved ? " · nouveau meilleur, publié dans server/brains" : ` · meilleur : ${(bestWinRate * 100).toFixed(1)} %`),
+        `  💾 test : score ${(lastScore * 100).toFixed(1)} % (${ev.detail})` +
+          (improved ? " · nouveau meilleur, publié dans server/brains" : ` · record : ${(bestScore * 100).toFixed(1)} %`),
       );
     }
     if (now - lastLog > 5000) {
@@ -287,7 +311,7 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
       const left = Math.max(0, deadline - now);
       console.log(
         `[${style.id}] gén ${generations} · ${totalGames.toLocaleString("fr-FR")} parties · ${gps.toFixed(0)} parties/s · ` +
-          `fitness ${meanFit.toFixed(3)} · préshots ${preshots.toFixed(2)} · anticipations ${anticipations.toFixed(2)} par partie · dernier test ${(lastWinRate * 100).toFixed(0)} % · reste ${fmtTime(left)}`,
+          `fitness ${meanFit.toFixed(3)} · préshots ${preshots.toFixed(2)} · anticipations ${anticipations.toFixed(2)} par partie · dernier score ${(lastScore * 100).toFixed(0)} % · reste ${fmtTime(left)}`,
       );
     }
   }

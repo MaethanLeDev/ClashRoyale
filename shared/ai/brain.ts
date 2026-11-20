@@ -18,6 +18,7 @@ export interface BrainFile {
     generations: number;
     games: number;
     winRateVsHeuristic: number;
+    leagueScore?: number;
     updatedAt: string;
   };
 }
@@ -220,10 +221,17 @@ export function observeEvents(sim: Sim, p: SimPlayer, mem: Memory) {
   }
 }
 
-export function resolveAction(sim: Sim, p: SimPlayer, action: number, cache?: Ctx): { card: CardId; x: number; y: number } | null {
+export function resolveAction(
+  sim: Sim,
+  p: SimPlayer,
+  action: number,
+  cache?: Ctx,
+  requireElixir = true,
+): { card: CardId; x: number; y: number } | null {
   if (action <= 0) return null;
   const card = AI_CARDS[Math.floor((action - 1) / ANCHORS.length)];
-  if (!p.hand.includes(card) || p.elixir < CARDS[card].cost) return null;
+  if (!p.hand.includes(card)) return null;
+  if (requireElixir && p.elixir < CARDS[card].cost) return null;
   const c = cache ?? ctxFor(sim, p);
   const pos = ANCHORS[(action - 1) % ANCHORS.length].resolve(c);
   if (!pos) return null;
@@ -240,10 +248,10 @@ export function validMask(sim: Sim, p: SimPlayer, mask: Uint8Array): Uint8Array 
   const c = ctxFor(sim, p);
   for (let ci = 0; ci < AI_CARDS.length; ci++) {
     const card = AI_CARDS[ci];
-    if (!p.hand.includes(card) || p.elixir < CARDS[card].cost) continue;
+    if (!p.hand.includes(card)) continue;
     for (let ai = 0; ai < ANCHORS.length; ai++) {
       const a = 1 + ci * ANCHORS.length + ai;
-      if (resolveAction(sim, p, a, c)) mask[a] = 1;
+      if (resolveAction(sim, p, a, c, false)) mask[a] = 1;
     }
   }
   return mask;
@@ -329,8 +337,9 @@ export class NeuralBot {
     const action = this.decide(p);
     this.lastAction = action;
     if (action === 0) return;
-    const r = resolveAction(this.sim, p, action);
-    if (r && !this.sim.play(p.id, r.card, r.x, r.y)) this.onPlay?.(action);
+    const r = resolveAction(this.sim, p, action, undefined, false);
+    if (!r || p.elixir < CARDS[r.card].cost) return;
+    if (!this.sim.play(p.id, r.card, r.x, r.y)) this.onPlay?.(action);
   }
 
   private decide(p: SimPlayer): number {

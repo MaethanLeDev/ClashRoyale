@@ -32,17 +32,17 @@ say(`Généré le ${new Date().toLocaleString("fr-FR")}`);
 say("");
 say("## Cerveaux");
 say("");
-say("| Bot | Arène | Générations | Parties jouées | Meilleur % vs classique | Mis à jour |");
-say("|---|---|---|---|---|---|");
+say("| Bot | Arène | Générations | Parties jouées | % vs classique | Score ligue | Mis à jour |");
+say("|---|---|---|---|---|---|---|");
 for (const st of STYLES) {
   const file = resolve(ROOT, "server", "brains", `${st.id}.json`);
   if (!existsSync(file)) {
-    say(`| ${st.label} | ${st.arena + 1} | — | — | pas encore de cerveau | — |`);
+    say(`| ${st.label} | ${st.arena + 1} | — | — | pas encore de cerveau | — | — |`);
     continue;
   }
   const b = JSON.parse(readFileSync(file, "utf8")) as BrainFile;
   const ok = b.layers[0] === INPUT_SIZE && b.layers[b.layers.length - 1] === ACTION_COUNT && b.params.length === paramCount(b.layers);
-  say(`| ${st.label} | ${st.arena + 1} | ${b.meta.generations} | ${b.meta.games.toLocaleString("fr-FR")} | ${(b.meta.winRateVsHeuristic * 100).toFixed(1)} % | ${new Date(b.meta.updatedAt).toLocaleString("fr-FR")}${ok ? "" : " (incompatible)"} |`);
+  say(`| ${st.label} | ${st.arena + 1} | ${b.meta.generations} | ${b.meta.games.toLocaleString("fr-FR")} | ${(b.meta.winRateVsHeuristic * 100).toFixed(1)} % | ${b.meta.leagueScore !== undefined ? `${(b.meta.leagueScore * 100).toFixed(1)} %` : "—"} | ${new Date(b.meta.updatedAt).toLocaleString("fr-FR")}${ok ? "" : " (incompatible)"} |`);
   if (ok) bots.push({ id: st.id, label: st.label, c: { kind: "brain", params: Float32Array.from(b.params), layers: b.layers, deck: b.deck } });
 }
 
@@ -67,6 +67,7 @@ say("");
 say(`## Tournoi (${GAMES} parties par duel, côtés alternés)`);
 say("");
 const usage = new Map<string, Map<number, number>>();
+const habits = new Map<string, { elixir: number; distinct: number; games: number }>();
 const results: number[][] = bots.map(() => bots.map(() => NaN));
 let seed = 99;
 for (let i = 0; i < bots.length; i++) {
@@ -82,6 +83,13 @@ for (let i = 0; i < bots.length; i++) {
         const m = usage.get(who)!;
         m.set(action, (m.get(action) ?? 0) + 1);
       });
+      for (const [team, bot] of [[0, A], [1, B]] as const) {
+        const hb = habits.get(bot.id) ?? { elixir: 0, distinct: 0, games: 0 };
+        hb.elixir += s.avgElixir[team];
+        hb.distinct += s.distinctCards[team];
+        hb.games++;
+        habits.set(bot.id, hb);
+      }
       const winnerBot = s.winner === -1 ? null : s.winner === 0 ? A : B;
       if (winnerBot === bots[i]) wi++;
       else if (winnerBot === bots[j]) wj++;
@@ -112,6 +120,8 @@ for (const b of bots.slice(1)) {
     const card = AI_CARDS[Math.floor((a - 1) / ANCHORS.length)];
     byCard.set(CARDS[card].name, (byCard.get(CARDS[card].name) ?? 0) + n);
   }
+  const hb = habits.get(b.id);
+  if (hb) say(`- Caféine moyenne ${(hb.elixir / hb.games).toFixed(1)} · ${(hb.distinct / hb.games).toFixed(1)} cartes différentes jouées par partie (sur 8)`);
   say(`- Cartes : ${[...byCard].sort((x, y) => y[1] - x[1]).map(([c, n]) => `${c} ${Math.round((n / total) * 100)} %`).join(", ")}`);
   const top = [...m].sort((x, y) => y[1] - x[1]).slice(0, 6);
   say(`- Coups favoris : ${top.map(([a, n]) => `${describeAction(a)} (${n})`).join(", ")}`);

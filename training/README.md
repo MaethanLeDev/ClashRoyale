@@ -30,9 +30,15 @@ Le programme entraîne les 4 bots l'un après l'autre (environ 8 h au total) :
 
 - **parties/s** : la vitesse réelle de ta machine.
 - **fitness** : la note moyenne (victoire + bonus de style). Elle doit monter en tendance, même si elle fait des vagues.
-- **dernier test** : le pourcentage de victoires contre le bot classique, mesuré toutes les 90 s.
+- **dernier score** : la moyenne des victoires contre toute la ligue (le bot classique et les 3 autres bots), mesurée toutes les 90 s. Le détail par adversaire s'affiche à chaque test. C'est ce score qui décide quel cerveau est publié pour le jeu.
 
 `Ctrl + C` arrête proprement à tout moment : le dernier cerveau sauvegardé est gardé. Relancer la commande reprend là où on s'était arrêté, donc chaque nuit rend les bots plus forts.
+
+Quand les règles du jeu ou de l'IA changent beaucoup (nouvelle carte, équilibrage, nouvelles actions), mieux vaut repartir de zéro :
+
+```bash
+caffeinate -i npm run train -- --style night --hours 6 --fresh
+```
 
 Autres commandes utiles :
 
@@ -69,7 +75,7 @@ L'historique de chaque entraînement est dans `training/logs/<style>.csv`, à ou
 
 **Ce que le bot voit** (environ 120 nombres, 3 fois par seconde) : les PV et la puissance des troupes dans 8 zones de l'arène, les PV des tours, sa caféine et celle de l'adversaire, les cartes de sa main, la dernière carte posée par l'adversaire et où, la troupe ennemie la plus avancée, et **le cycle de l'adversaire** : quelles cartes il a déjà montrées, et lesquelles sont revenues dans sa main (une carte revient après 4 autres poses).
 
-**Ce qu'il peut faire** : attendre, ou poser une carte de sa main à l'un des 17 points clés (derrière une tour, au pont, au pont adverse, sur la tour adverse, sur la menace, les deux positions « aimant » au centre pour dévier les troupes qui visent les bâtiments entre les deux tours, etc.). Soit 171 actions possibles.
+**Ce qu'il peut faire** : attendre, ou choisir une carte de sa main et un endroit. Si la carte est trop chère pour l'instant, il économise jusqu'à pouvoir la poser : « garder sa caféine pour Super Samy » est une seule décision, facile à découvrir. Il peut poser une carte à l'un des 17 points clés (derrière une tour, au pont, au pont adverse, sur la tour adverse, sur la menace, les deux positions « aimant » au centre pour dévier les troupes qui visent les bâtiments entre les deux tours, etc.). Soit 171 actions possibles.
 
 **Son cerveau** : un réseau de neurones de 3 couches (120 → 64 → 48 → 171). Il donne une note à chaque action, et le bot joue la meilleure.
 
@@ -80,6 +86,12 @@ L'historique de chaque entraînement est dans `training/logs/<style>.csv`, à ou
 3. On calcule la note de chaque variante avec la récompense du style.
 4. On déplace le cerveau dans la direction des variantes qui ont eu les meilleures notes.
 
-C'est de l'apprentissage par renforcement : le bot n'a jamais d'exemple de « bon coup », il découvre tout seul ce qui rapporte des points. Changer la récompense change le style : en donnant des points aux préshots, Le Devin apprend à anticiper.
+C'est de l'apprentissage par renforcement : le bot n'a jamais d'exemple de « bon coup », il découvre tout seul ce qui rapporte des points. Changer la récompense change le style : en donnant des points aux préshots, Le Devin apprend à anticiper. Une petite récompense pour le nombre de cartes différentes jouées l'encourage à utiliser tout son deck au lieu de recycler les 4 ou 5 cartes les moins chères.
+
+## Ce que la première nuit nous a appris
+
+- Les bots dépensaient leur caféine dès qu'ils le pouvaient (2,5 en moyenne) : Super Samy, Natis, Tarit et Imad restaient coincés en main toute la partie. Corrigé en laissant le bot choisir une carte trop chère pour économiser.
+- Midas lancé directement sur les tours était la stratégie dominante (945 dégâts pour 3 de caféine sur une tour sans défense). Ses PV passent de 220 à 175 : il meurt en 2 flèches comme le fût de gobelins du vrai jeu.
+- Le meilleur cerveau était choisi contre le bot classique seulement : le Boss pouvait perdre contre le Rusheur. Il est maintenant choisi sur sa moyenne contre toute la ligue.
 
 Les récompenses de chaque style sont dans `shared/ai/styles.ts`, et le calcul de la note dans `shared/ai/match.ts`.

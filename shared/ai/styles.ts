@@ -11,6 +11,7 @@ export interface RewardWeights {
   preshot: number;
   anticipation: number;
   aggression: number;
+  variety: number;
 }
 
 export interface StyleDef {
@@ -30,7 +31,7 @@ export const STYLES: StyleDef[] = [
     label: "Le Rusheur",
     description: "Pousse sans arrêt au pont et cherche les tours le plus vite possible.",
     deck: ["tarit", "natis", "nazar", "midas", "goutier", "valere", "tordeux", "niels"],
-    reward: { win: 1, crowns: 0.4, towerDealt: 1.2, towerTaken: 0.3, trade: 0.1, preshot: 0, anticipation: 0, aggression: 0.015 },
+    reward: { win: 1, crowns: 0.4, towerDealt: 1.2, towerTaken: 0.3, trade: 0.1, preshot: 0, anticipation: 0, aggression: 0.015, variety: 0.25 },
     minutesPerNight: 75,
   },
   {
@@ -39,7 +40,7 @@ export const STYLES: StyleDef[] = [
     label: "Le Mur",
     description: "Défend tout, gagne les échanges de caféine et punit en contre-attaque.",
     deck: ["imad", "valere", "tordeux", "goutier", "niels", "natis", "nazar", "samy"],
-    reward: { win: 1, crowns: 0.2, towerDealt: 0.3, towerTaken: 1.2, trade: 0.6, preshot: 0, anticipation: 0.03, aggression: 0 },
+    reward: { win: 1, crowns: 0.2, towerDealt: 0.3, towerTaken: 1.2, trade: 0.6, preshot: 0, anticipation: 0.03, aggression: 0, variety: 0.3 },
     minutesPerNight: 75,
   },
   {
@@ -48,7 +49,7 @@ export const STYLES: StyleDef[] = [
     label: "Le Devin",
     description: "Compte ton cycle et ta caféine, et pose sa défense ou son Papy Niels avant même que tu joues.",
     deck: ["niels", "midas", "nazar", "goutier", "valere", "tordeux", "imad", "tarit"],
-    reward: { win: 1, crowns: 0.2, towerDealt: 0.4, towerTaken: 0.4, trade: 0.2, preshot: 0.15, anticipation: 0.12, aggression: 0 },
+    reward: { win: 1, crowns: 0.2, towerDealt: 0.4, towerTaken: 0.4, trade: 0.2, preshot: 0.15, anticipation: 0.12, aggression: 0, variety: 0.25 },
     minutesPerNight: 120,
   },
   {
@@ -57,7 +58,7 @@ export const STYLES: StyleDef[] = [
     label: "Le Boss du Volcan",
     description: "Entraîné plus longtemps que tous les autres, contre tous les autres. Aucune pitié.",
     deck: ["samy", "valere", "tordeux", "niels", "nazar", "goutier", "natis", "tarit"],
-    reward: { win: 1.5, crowns: 0.5, towerDealt: 0.3, towerTaken: 0.3, trade: 0.1, preshot: 0.03, anticipation: 0.03, aggression: 0 },
+    reward: { win: 1.5, crowns: 0.5, towerDealt: 0.3, towerTaken: 0.3, trade: 0.1, preshot: 0.03, anticipation: 0.03, aggression: 0, variety: 0.2 },
     minutesPerNight: 210,
   },
 ];

@@ -93,7 +93,7 @@ export const CARDS: Record<CardId, CardDef> = {
     deployAnywhere: true,
     delivery: "thrown",
     unit: {
-      hp: 220, damage: 105, hitSpeed: 1.1, firstHit: 0.3, speed: 1.9, range: 0.6, sight: 5.5,
+      hp: 175, damage: 105, hitSpeed: 1.1, firstHit: 0.3, speed: 1.9, range: 0.6, sight: 5.5,
       radius: 0.4, mass: 2, targetsBuildingsOnly: false, height: 1.1,
     },
     look: { body: 0x2f5d3a, accent: 0xd4af37, scale: 0.8, weapon: "dagger" },

@@ -17,6 +17,8 @@ export interface MatchStats {
   elixirLost: [number, number];
   preshots: [number, number];
   anticipations: [number, number];
+  distinctCards: [number, number];
+  avgElixir: [number, number];
   aggression: [number, number];
   time: number;
 }
@@ -55,10 +57,13 @@ export function playMatch(a: Contender, b: Contender, seed: number, trace?: (tea
     });
     const spawned = new Map<number, number>();
     const stats: MatchStats = {
-      winner: -1, crowns: [0, 0], towerLost: [0, 0], elixirLost: [0, 0], preshots: [0, 0], anticipations: [0, 0], aggression: [0, 0], time: 0,
+      winner: -1, crowns: [0, 0], towerLost: [0, 0], elixirLost: [0, 0], preshots: [0, 0], anticipations: [0, 0], distinctCards: [0, 0], avgElixir: [0, 0], aggression: [0, 0], time: 0,
     };
     const spellCasts: { tm: Team; land: number }[] = [];
     let pending: { tm: Team; lane: number; t: number }[] = [];
+    const played = [new Set<string>(), new Set<string>()];
+    const elixirSum = [0, 0];
+    let elixirTicks = 0;
     let ticks = 0;
     while (sim.phase !== "ended" && ticks < 20 * 300) {
       sim.step(DT);
@@ -73,6 +78,7 @@ export function playMatch(a: Contender, b: Contender, seed: number, trace?: (tea
           const ly = ev.tm === 0 ? ev.y : ARENA_H - ev.y;
           if (ly >= 13 && card.kind !== "spell") stats.aggression[ev.tm] += 1;
           if (card.kind === "spell" && card.spell) spellCasts.push({ tm: ev.tm, land: sim.time + card.spell.delay });
+          played[ev.tm].add(ev.c);
           const lane = ev.x < ARENA_W / 2 ? 0 : 1;
           if (card.kind !== "spell" && !card.deployAnywhere) {
             const enemyTeam: Team = ev.tm === 0 ? 1 : 0;
@@ -95,6 +101,10 @@ export function playMatch(a: Contender, b: Contender, seed: number, trace?: (tea
       }
       sim.clearEvents();
       ticks++;
+      if (sim.phase === "playing" || sim.phase === "overtime") {
+        for (const pl of sim.players.values()) elixirSum[pl.team] += pl.elixir;
+        elixirTicks++;
+      }
     }
     stats.winner = sim.winner ?? -1;
     stats.crowns = [sim.crowns[0], sim.crowns[1]];
@@ -105,6 +115,8 @@ export function playMatch(a: Contender, b: Contender, seed: number, trace?: (tea
       stats.towerLost[team] = 1 - hp / max;
     }
     stats.time = sim.time;
+    stats.distinctCards = [played[0].size, played[1].size];
+    stats.avgElixir = [elixirSum[0] / Math.max(1, elixirTicks), elixirSum[1] / Math.max(1, elixirTicks)];
     return stats;
   } finally {
     Math.random = realRandom;
@@ -121,6 +133,7 @@ export function fitnessFor(s: MatchStats, me: Team, w: RewardWeights): number {
   f += Math.max(-1, Math.min(1, (s.elixirLost[them] - s.elixirLost[me]) / 30)) * w.trade;
   f += Math.min(8, s.preshots[me]) * w.preshot;
   f += Math.min(8, s.anticipations[me]) * w.anticipation;
+  f += (s.distinctCards[me] / 8) * w.variety;
   f += Math.min(30, s.aggression[me]) * w.aggression;
   return f;
 }
