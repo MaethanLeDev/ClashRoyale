@@ -53,7 +53,7 @@ def srgb_to_linear(c):
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
-def material(name, hex_color, metallic=0.0, roughness=0.8, emissive=0.0):
+def material(name, hex_color, metallic=0.0, roughness=0.8, emissive=0.0, alpha=1.0):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     if not getattr(m, "use_nodes", True):
         m.use_nodes = True
@@ -65,6 +65,10 @@ def material(name, hex_color, metallic=0.0, roughness=0.8, emissive=0.0):
     if emissive:
         bsdf.inputs["Emission Color"].default_value = (r, g, b, 1)
         bsdf.inputs["Emission Strength"].default_value = emissive
+    if alpha < 1:
+        bsdf.inputs["Alpha"].default_value = alpha
+        if hasattr(m, "surface_render_method"):
+            m.surface_render_method = "BLENDED"
     return m
 
 
@@ -143,6 +147,10 @@ class Builder:
         else:
             bpy.ops.mesh.primitive_cone_add(vertices=verts, radius1=r, radius2=r2, depth=depth)
         return self._finish(name, mat, parent, loc, rot, smooth, 0)
+
+    def ico(self, name, r, loc, mat, parent=None, scale=(1, 1, 1), subdiv=1, rot=(0, 0, 0)):
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=subdiv, radius=r, scale=scale)
+        return self._finish(name, mat, parent, loc, rot, False, 0)
 
     def sphere(self, name, r, loc, mat, parent=None, scale=(1, 1, 1), seg=10, rings=6, smooth=True):
         bpy.ops.mesh.primitive_uv_sphere_add(segments=seg, ring_count=rings, radius=r, scale=scale)
@@ -537,6 +545,99 @@ def build_tarit(b):
     b.empty("head_anchor", (0, 0.3, 2.45))
 
 
+
+# ------------------------------------------------------- Papy Niels (sort)
+# Le sort n'a pas d'unité en jeu : ce modèle sert à sa fiche. Papy Niels
+# dans son rocking-chair ; l'Empty 'rock' est le pivot du balancement.
+
+def build_niels(b):
+    wood = material("niels_wood", 0x7a4a26, roughness=0.8)
+    wood_dark = material("niels_wood_dark", 0x5a3418, roughness=0.85)
+    cardigan = material("niels_cardigan", 0x9c8b6e, roughness=0.95)
+    shirt = material("niels_shirt", 0xf2efe8, roughness=0.7)
+    trousers = material("niels_trousers", 0x5a5f66, roughness=0.9)
+    slipper = material("niels_slipper", 0x8a2f2a, roughness=0.95)
+    plaid = material("niels_plaid", 0xa8322d, roughness=0.95)
+    plaid_line = material("niels_plaid_line", 0x2a3b5a, roughness=0.95)
+    skin = material("niels_skin", 0xe0b089, roughness=0.7)
+    cane = material("niels_cane", 0x3b2414, roughness=0.6)
+    brass = material("niels_brass", 0xc9a227, metallic=0.8, roughness=0.3)
+    team = material("team", 0x3b8cff, roughness=0.6)
+
+    root = b.root
+    rock = b.empty("rock", (0, 0, 0))
+    b.root = rock
+
+    # Patins arrondis : segments le long d'un arc.
+    R, cz = 1.3, 1.34
+    for side, x in (("L", -0.32), ("R", 0.32)):
+        for i in range(7):
+            a = math.radians(-36 + i * 12)
+            y, z = R * math.sin(a), cz - R * math.cos(a)
+            b.box(f"rocker_{side}{i}", (0.06, 0.29, 0.06), (x, y, z), wood_dark, rot=(a, 0, 0), bevel=0.01)
+        for j, y in enumerate((-0.24, 0.24)):
+            b.cyl(f"post_{side}{j}", 0.03, 0.46, (x, y, 0.3), wood, verts=6)
+    b.box("seat", (0.72, 0.62, 0.07), (0, 0, 0.55), wood, bevel=0.02)
+    for side, x in (("L", -0.32), ("R", 0.32)):
+        b.box(f"back_post_{side}", (0.06, 0.06, 0.95), (x, 0.36, 1.0), wood, rot=(-0.16, 0, 0), bevel=0.01)
+        b.box(f"arm_rest_{side}", (0.09, 0.56, 0.05), (x * 1.18, -0.02, 0.8), wood, bevel=0.01)
+        b.cyl(f"spindle_{side}", 0.025, 0.24, (x * 1.18, -0.24, 0.67), wood, verts=6)
+    for i, z in enumerate((0.8, 1.05, 1.3)):
+        b.box(f"slat_{i}", (0.62, 0.04, 0.07 if i < 2 else 0.12), (0, 0.32 + (z - 0.55) * 0.16, z), wood_dark, rot=(-0.16, 0, 0), bevel=0.01)
+
+    # Papy assis.
+    b.box("hips", (0.42, 0.3, 0.14), (0, 0.08, 0.66), trousers, bevel=0.03)
+    b.box("torso", (0.48, 0.3, 0.5), (0, 0.14, 0.93), cardigan, rot=(-0.14, 0, 0), bevel=0.05)
+    b.box("shirt", (0.14, 0.03, 0.36), (0, -0.015, 0.97), shirt, rot=(-0.14, 0, 0), bevel=0)
+    for i, z in enumerate((0.8, 0.92, 1.04)):
+        b.sphere(f"button_{i}", 0.022, (0.09, -0.02 + (z - 0.8) * 0.14, z), brass, seg=6, rings=3, smooth=False)
+    b.cyl("scarf", 0.18, 0.09, (0, 0.17, 1.18), team, verts=10)
+    b.box("scarf_tail", (0.09, 0.03, 0.28), (-0.1, -0.02, 1.02), team, rot=(-0.14, 0, 0.1), bevel=0.01)
+    for side, x in (("L", -0.11), ("R", 0.11)):
+        b.box(f"thigh_{side}", (0.17, 0.44, 0.16), (x, -0.13, 0.66), trousers, bevel=0.03)
+        b.box(f"shin_{side}", (0.15, 0.15, 0.5), (x, -0.36, 0.38), trousers, bevel=0.03)
+        b.box(f"slipper_{side}", (0.18, 0.3, 0.1), (x, -0.42, 0.1), slipper, bevel=0.04)
+    b.box("plaid", (0.52, 0.46, 0.05), (0, -0.16, 0.76), plaid, bevel=0.02)
+    for i, x in enumerate((-0.12, 0.12)):
+        b.box(f"plaid_v{i}", (0.04, 0.47, 0.055), (x, -0.16, 0.76), plaid_line, bevel=0)
+    b.box("plaid_h", (0.53, 0.04, 0.055), (0, -0.2, 0.76), plaid_line, bevel=0)
+    b.box("plaid_fold", (0.52, 0.05, 0.22), (0, -0.39, 0.66), plaid, bevel=0.02)
+    for side, sx in (("L", -1), ("R", 1)):
+        b.cyl(f"upperarm_{side}", 0.075, 0.3, (sx * 0.31, 0.16, 0.98), cardigan, verts=8)
+        b.box(f"forearm_{side}", (0.13, 0.34, 0.12), (sx * 0.36, -0.02, 0.86), cardigan, bevel=0.03)
+        b.sphere(f"hand_{side}", 0.075, (sx * 0.36, -0.22, 0.86), skin, seg=8, rings=5)
+    # Canne posée contre l'accoudoir droit.
+    b.cyl("cane", 0.025, 0.95, (0.52, -0.3, 0.47), cane, rot=(0.12, -0.12, 0), verts=6)
+    b.box("cane_handle", (0.05, 0.18, 0.05), (0.58, -0.3, 0.95), cane, rot=(0.12, 0, 0), bevel=0.02)
+    b.empty("head_anchor", (0, 0.14, 1.5))
+
+    b.root = root
+
+
+# ------------------------------------------------------- Bloc de glace
+# Coquille normalisée : base à z = 0, ~1 de haut, ~1 de large. Le jeu la
+# met à l'échelle de l'unité ou de la tour gelée.
+
+def build_ice(b):
+    shell = material("ice_shell", 0xbfe9ff, roughness=0.05, alpha=0.38, emissive=0.15)
+    spike = material("ice_spike", 0xd6f3ff, roughness=0.05, alpha=0.6, emissive=0.2)
+    frost = material("ice_frost", 0xf2fbff, roughness=0.6, alpha=0.85)
+    b.ico("shell", 0.5, (0, 0, 0.52), shell, scale=(1.0, 1.0, 1.06), subdiv=1)
+    b.cyl("frost", 0.55, 0.07, (0, 0, 0.035), frost, verts=12, smooth=False)
+    spikes = [(0, 0.2, 0.25), (72, 0.35, 0.3), (144, 0.15, 0.22), (216, 0.4, 0.28), (288, 0.25, 0.24),
+              (36, 0.75, 0.2), (180, 0.7, 0.22), (300, 0.8, 0.18)]
+    for i, (deg, z, size) in enumerate(spikes):
+        a = math.radians(deg)
+        e = math.radians(35 if z > 0.6 else 10)
+        r = 0.47
+        loc = (math.cos(a) * r, math.sin(a) * r, z)
+        b.cyl(f"spike_{i}", size * 0.4, size * 1.6, loc, spike, rot=(math.pi / 2 - e, 0, a + math.pi / 2),
+              verts=5, r2=0.0, smooth=False)
+    for i, (dx, dy, h) in enumerate(((0.08, 0.05, 0.3), (-0.12, 0.02, 0.22), (0.02, -0.12, 0.18))):
+        b.cyl(f"crown_{i}", h * 0.35, h, (dx, dy, 1.0 + h * 0.3), spike, rot=(dx * 2, dy * 2, 0),
+              verts=5, r2=0.0, smooth=False)
+
+
 BUILDERS = {
     "valere": build_valere,
     "goutier": build_goutier,
@@ -549,6 +650,8 @@ BUILDERS = {
     "taritPilot": build_taritPilot,
     "imad": build_imad,
     "tarit": build_tarit,
+    "niels": build_niels,
+    "ice": build_ice,
 }
 
 
