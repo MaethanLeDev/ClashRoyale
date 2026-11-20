@@ -13,6 +13,16 @@ step "Paquets de base"
 sudo apt-get update
 sudo apt-get install -y curl git ca-certificates
 
+MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
+if [ "$MEM_MB" -lt 2000 ] && [ "$(swapon --show --noheadings | wc -l)" -eq 0 ]; then
+  step "Peu de mémoire (${MEM_MB} Mo) : ajout de 2 Go de swap pour pouvoir compiler"
+  sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
+
 NODE_MAJOR=0
 if command -v node >/dev/null 2>&1; then NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"; fi
 if [ "$NODE_MAJOR" -lt 20 ]; then

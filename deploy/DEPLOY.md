@@ -19,7 +19,8 @@ Besoins mesurés : moins de 5 % d'un cœur de Raspberry Pi 4 et environ **0,2 Mb
    - Image : **Ubuntu 24.04** (version aarch64)
    - Shape : **VM.Standard.A1.Flex** (Ampere), 2 OCPU et 12 Go de mémoire
    - Clés SSH : « Generate a key pair » et **télécharge la clé privée**
-   - Si Oracle répond « Out of capacity », choisis un autre *availability domain* ou réessaie plus tard (c'est fréquent).
+   - Réseau : crée d'abord le réseau avec *Networking → Virtual cloud networks → Start VCN Wizard → Create VCN with Internet Connectivity*, puis choisis ce VCN et son sous-réseau **public** dans le formulaire de l'instance, et active « Automatically assign public IPv4 address ».
+   - Si Oracle répond **« Out of capacity »** (fréquent pour les machines ARM, surtout à Paris qui n'a qu'une zone) : réessaie à d'autres heures, ou prends la forme **VM.Standard.E2.1.Micro** (AMD, 1 Go de RAM, aussi « Always Free »). Elle suffit pour le jeu ; le script ajoute automatiquement 2 Go de swap pour pouvoir compiler. Choisis alors l'image Ubuntu 24.04 **non** aarch64.
 3. Connecte-toi : `ssh -i chemin/vers/la-cle.key ubuntu@IP_PUBLIQUE_DE_LA_VM`.
 
 Inutile d'ouvrir des ports dans Oracle : le tunnel sort de la VM vers Cloudflare.
