@@ -11,12 +11,17 @@ import { CARDS, type CardId } from "../../../shared/cards";
 //   bulb : mesh dont l'émission clignote (bâtiment)
 //   wheel_* : pivots des roues (véhicule), origine sur l'axe
 
-const templates = new Map<CardId, THREE.Object3D>();
+const templates = new Map<string, THREE.Object3D>();
+const EXTRA = ["ice"];
+
+export function getTemplate(name: string): THREE.Object3D | undefined {
+  return templates.get(name);
+}
 
 export function loadModels(): Promise<void> {
   const loader = new GLTFLoader();
   return Promise.all(
-    (Object.keys(CARDS) as CardId[]).map(
+    [...Object.keys(CARDS), ...EXTRA].map(
       (id) =>
         new Promise<void>((resolve) => {
           loader.load(
