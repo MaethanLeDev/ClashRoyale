@@ -106,6 +106,14 @@ Si les couronnes sont à égalité après les prolongations, toutes les tours pe
 
 Molette sur PC, ou bouton 🎥 en jeu et « Réglages → Caméra » depuis l'accueil (avec aperçu). Le réglage combine inclinaison et focale (effet « dolly zoom ») : vue quasi du dessus d'un côté, vue rapprochée en perspective de l'autre.
 
+## Modèles 3D
+
+Chaque carte a un modèle low-poly dans `client/public/models/<id>.glb`, généré par `tools/blender/build_unit.py` (Blender 5.3). Une carte sans `.glb` garde le modèle construit en code.
+
+- Tout régénérer : dans Blender, *Scripting → Open → build_unit.py → Run Script*, ou `blender -b -P tools/blender/build_unit.py -- all`
+- Une seule carte : `-- valere` ; ré-exporter une collection retouchée à la main : `-- valere export`
+- Conventions lues par le jeu : personnage face à −Y, pieds à z = 0, environ 1,9 de haut ; pivots `leg_L`, `leg_R`, `arm_L`, `arm_R` (hanche / épaule), `head_anchor` (photo ronde), `cape`, `bulb` (bâtiment), `wheel_*` (véhicule) ; matériau `team` recoloré à la couleur de l'équipe.
+
 ## Ajouter une carte
 
 1. Mettre la photo dans `client/public/cards/<id>.png` et une tête ronde dans `client/public/heads/<id>.png` (voir `tools/prepare_photos.py`).
