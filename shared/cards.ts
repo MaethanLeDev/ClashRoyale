@@ -1,4 +1,4 @@
-export type CardId = "midas" | "valere" | "samy" | "tordeux" | "natis" | "goutier" | "imad" | "niels" | "nazar" | "tarit" | "taritPilot";
+export type CardId = "midas" | "valere" | "samy" | "tordeux" | "natis" | "goutier" | "imad" | "niels" | "nazar" | "tarit" | "taritPilot" | "savy";
 
 export type CardKind = "troop" | "building" | "spell";
 
@@ -17,6 +17,7 @@ export interface UnitStats {
   targetsBuildingsOnly: boolean;
   projectile?: { speed: number; kind: string };
   towerKiller?: boolean;
+  splash?: number;
   towerDamageMult?: number;
   jumpsRiver?: boolean;
   deathDamage?: { radius: number; damage: number };
@@ -54,7 +55,7 @@ export interface CardDef {
     accent: number;
     scale: number;
     cape?: number;
-    weapon?: "sword" | "dagger" | "finger" | "pickaxe";
+    weapon?: "sword" | "dagger" | "finger" | "pickaxe" | "orb";
     building?: boolean;
     vehicle?: boolean;
   };
@@ -242,6 +243,25 @@ export const CARDS: Record<CardId, CardDef> = {
       deathDamage: { radius: 2.2, damage: 220 }, deathSpawn: "taritPilot",
     },
     look: { body: 0x121417, accent: 0xc0c4cc, scale: 1, vehicle: true },
+  },
+  savy: {
+    id: "savy",
+    kind: "troop",
+    name: "Savy",
+    title: "Savy le Sorcier",
+    description: "Toujours le sourire, même quand il crame tout le monde. Ses boules de feu explosent et touchent tout ce qui se trouve autour de la cible.",
+    cost: 5,
+    rarity: "rare",
+    role: "Dégâts de zone",
+    count: 1,
+    spawnRadius: 0,
+    deployAnywhere: false,
+    unit: {
+      hp: 640, damage: 210, hitSpeed: 1.4, firstHit: 0.5, speed: 1.0, range: 5, sight: 6.5,
+      radius: 0.5, mass: 4, targetsBuildingsOnly: false, height: 1.5, splash: 1.5,
+      projectile: { speed: 11, kind: "fireball" },
+    },
+    look: { body: 0x2b2d33, accent: 0xff7a1a, scale: 1, weapon: "orb" },
   },
   taritPilot: {
     id: "taritPilot",

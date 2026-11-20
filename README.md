@@ -74,10 +74,11 @@ tools/      script de préparation des photos, test de simulation
 | Tordeux | 4 | Tireur à distance |
 | Imad | 4 | Bâtiment défensif (QG) |
 | Natis | 5 | Tank qui vise les bâtiments |
+| Savy | 5 | Sorcier : boules de feu à dégâts de zone |
 | Tarit | 7 | Duster qui saute la rivière et vise les tours ; explose à sa mort et Tarit en sort |
 | Super Samy | 10 | Géant : rase toute tour qu'il touche |
 
-Un deck contient 8 cartes, modifiable dans « Mon deck ».
+Un deck contient 8 cartes parmi 11, modifiable dans « Mon deck ».
 
 ## Arènes et trophées
 

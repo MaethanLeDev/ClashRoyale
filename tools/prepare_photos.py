@@ -74,3 +74,19 @@ def compose_tarit(person_path, car_path, out):
 
 if len(sys.argv) >= 5:
     compose_tarit(sys.argv[3], sys.argv[4], OUT)
+
+
+EXTRAS = {
+    "savy": ("3.webp", (230, 100, 880, 750)),
+}
+
+if len(sys.argv) >= 6:
+    extra_dir = sys.argv[5]
+    for cid, (fname, box) in EXTRAS.items():
+        im = Image.open(f"{extra_dir}/{fname}").convert("RGBA")
+        head_from(im, box, f"{OUT}/heads/{cid}.png")
+        w, h = im.size
+        scale = 720 / max(w, h)
+        if scale < 1:
+            im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
+        im.save(f"{OUT}/cards/{cid}.png", optimize=True)

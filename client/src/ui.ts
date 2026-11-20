@@ -33,6 +33,7 @@ const FOCUS: Record<CardId, string> = {
   nazar: "45% 10%",
   tarit: "50% 30%",
   taritPilot: "50% 12%",
+  savy: "45% 18%",
 };
 
 export function cardEl(id: CardId, opts: { showName?: boolean; small?: boolean } = {}): HTMLDivElement {

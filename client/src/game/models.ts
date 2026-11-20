@@ -333,6 +333,16 @@ export function createUnitModel(card: CardDef, color: number): UnitModel {
     pick.position.set(0, -0.42, 0.8);
     pick.rotation.z = 0;
     right.add(handle, pick);
+  } else if (card.look.weapon === "orb") {
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 12, 10),
+      mat(card.look.accent, { emissive: card.look.accent, emissiveIntensity: 2.4 }),
+    );
+    orb.position.set(0, -0.5, 0.12);
+    right.add(orb);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff3b0 }));
+    core.position.copy(orb.position);
+    right.add(core);
   } else if (card.look.weapon === "finger") {
     const tip = new THREE.Mesh(
       new THREE.SphereGeometry(0.07, 8, 6),
@@ -541,6 +551,9 @@ export function createProjectileModel(kind: string, color: number): THREE.Object
     g.add(fl);
   } else if (kind === "cannon") {
     g.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat(0x22222a, { metalness: 0.7, roughness: 0.3 })));
+  } else if (kind === "fireball") {
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff8a2a })));
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff3b0 })));
   } else if (kind === "finger" || kind === "idea") {
     const c = kind === "finger" ? 0xffd54a : 0xfff3a0;
     g.add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshBasicMaterial({ color: c })));

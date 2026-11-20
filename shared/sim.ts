@@ -75,6 +75,7 @@ interface Projectile {
   damage: number;
   targetId: number | null;
   towerKiller: boolean;
+  splash: number;
   payload?: { card: CardId; owner: string };
 }
 
@@ -191,7 +192,7 @@ export class Sim {
         id: this.nextId++, kind: dig ? "dig" : "barrel", team: p.team, x: king.x, y: sy, h: dig ? 0 : 3,
         x0: king.x, y0: sy, tx: x, ty: y, h0: dig ? 0 : 3, h1: dig ? 0 : 0.3,
         arc: dig ? 0 : Math.min(8, 2 + dist * 0.35),
-        speed: dig ? 6.5 : 11, damage: 0, targetId: null, towerKiller: false, payload: { card: card.id, owner: p.id },
+        speed: dig ? 6.5 : 11, damage: 0, targetId: null, towerKiller: false, splash: 0, payload: { card: card.id, owner: p.id },
       });
       return;
     }
@@ -491,7 +492,7 @@ export class Sim {
       this.projectiles.push({
         id: this.nextId++, kind: s.projectile.kind, team: u.team, x: u.x, y: u.y, h: s.height * 0.7,
         x0: u.x, y0: u.y, tx: target.x, ty: target.y, h0: s.height * 0.7, h1: 0.8, arc: 0,
-        speed: s.projectile.speed, damage: s.damage, targetId: target.id, towerKiller: false,
+        speed: s.projectile.speed, damage: s.damage, targetId: target.id, towerKiller: false, splash: s.splash ?? 0,
       });
       return;
     }
@@ -639,7 +640,7 @@ export class Sim {
         this.projectiles.push({
           id: this.nextId++, kind: t.kind === "king" ? "cannon" : "arrow", team: t.team,
           x: t.x, y: t.y, h: h0, x0: t.x, y0: t.y, tx: target.x, ty: target.y, h0, h1: 0.8, arc: 0,
-          speed: t.kind === "king" ? 13 : 18, damage: t.def.damage, targetId: target.id, towerKiller: false,
+          speed: t.kind === "king" ? 13 : 18, damage: t.def.damage, targetId: target.id, towerKiller: false, splash: 0,
         });
         this.emit({ e: "attack", id: t.id, tid: target.id });
       }
@@ -668,6 +669,14 @@ export class Sim {
           const card = CARDS[p.payload.card];
           this.emit({ e: "spell", c: card.id, x: r2(p.x), y: r2(p.y), r: 1, tm: p.team });
           this.spawnUnits(card, p.team, p.x, p.y, card.delivery === "dig" ? 0.6 : 0.4);
+        } else if (p.splash > 0) {
+          this.emit({ e: "splash", x: r2(p.x), y: r2(p.y), r: p.splash, tm: p.team });
+          for (const u of this.units) {
+            if (u.team !== p.team && u.hp > 0 && Math.hypot(u.x - p.x, u.y - p.y) - u.radius <= p.splash) this.damage(u, p.damage, p.kind);
+          }
+          for (const t of this.towers) {
+            if (t.team !== p.team && t.alive && Math.hypot(t.x - p.x, t.y - p.y) - t.radius <= p.splash) this.damage(t, p.damage, p.kind);
+          }
         } else if (target) {
           this.damage(target, p.damage, p.kind);
         }
