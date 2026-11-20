@@ -254,7 +254,13 @@ function renderRooms() {
         "div",
         { class: "room-item" },
         h("div", { class: "code" }, r.id),
-        h("div", { class: "meta" }, `${r.mode} · ${host} · ${humans}/${cap} joueurs${r.status === "playing" ? " · en jeu" : ""}`),
+        h(
+          "div",
+          { class: "meta" },
+          r.status === "playing"
+            ? `${r.mode} · ${r.players.map((p) => p.name).join(" vs ")} · en jeu${r.spectators ? ` · 👁 ${r.spectators}` : ""}`
+            : `${r.mode} · ${host} · ${humans}/${cap} joueurs`,
+        ),
         r.status === "lobby"
           ? h("button", {
               class: "btn small",
@@ -264,7 +270,14 @@ function renderRooms() {
                 net.send({ type: "join", roomId: r.id });
               },
             }, "Rejoindre")
-          : null,
+          : h("button", {
+              class: "btn small ghost",
+              onclick: () => {
+                if (!ensureName()) return;
+                net.send({ type: "hello", name: app.name, deck: app.deck });
+                net.send({ type: "spectate", roomId: r.id });
+              },
+            }, "👁 Regarder"),
       );
     }),
   );
@@ -663,7 +676,17 @@ function renderRoom() {
 
 // ---------- Game ----------
 
-function startGame(team: Team, players: PlayerSnap[], arena: number) {
+let spectating: { players: PlayerSnap[]; arena: number; team: Team } | null = null;
+
+function leaveSpectating() {
+  net.send({ type: "stopSpectating" });
+  spectating = null;
+  stopGame();
+  renderHome();
+}
+
+function startGame(team: Team, players: PlayerSnap[], arena: number, spectator = false) {
+  spectating = spectator ? { players, arena, team } : null;
   stopGame();
   for (const m of document.querySelectorAll(".modal-backdrop")) m.remove();
   authModal = null;
@@ -681,9 +704,15 @@ function startGame(team: Team, players: PlayerSnap[], arena: number) {
     onCardDown: (card, e) => view?.startDrag(card, e),
     onEmote: (emote) => net.send({ type: "emote", emote }),
     onBack: () => {
+      if (spectator) return leaveSpectating();
       stopGame();
       if (app.room) renderRoom();
       else renderHome();
+    },
+    spectator,
+    onSwitchSide: () => {
+      if (!spectating) return;
+      startGame(spectating.team === 0 ? 1 : 0, spectating.players, spectating.arena, true);
     },
   });
   view = new GameView({
@@ -808,7 +837,7 @@ net.on((msg: ServerMsg) => {
       } else if (app.screen === "room") renderHome();
       break;
     case "start":
-      startGame(msg.team, msg.players, msg.arena ?? 0);
+      startGame(msg.team, msg.players, msg.arena ?? 0, !!msg.spectator);
       break;
     case "state":
       if (app.game) {
@@ -856,7 +885,16 @@ net.on((msg: ServerMsg) => {
       if (app.screen === "road") renderRoad();
       break;
     case "emote":
-      app.game?.view.showEmote(msg.tm, msg.name, msg.emote);
+      if (msg.spectator) app.game?.hud.crowdEmote(msg.name, msg.emote);
+      else app.game?.view.showEmote(msg.tm, msg.name, msg.emote);
+      break;
+    case "spectateEnd":
+      if (spectating) {
+        spectating = null;
+        stopGame();
+        renderHome();
+        toast(ui, "La partie a été interrompue");
+      }
       break;
     case "error":
       if (app.game) app.game.hud.toast(msg.msg);

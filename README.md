@@ -92,6 +92,10 @@ Tout est stocké dans `data/db.json` sur la machine qui héberge le serveur (mot
 
 Dans un salon, chaque joueur indique qu'il est **prêt** ; l'hôte ne peut lancer la partie que quand tout le monde l'est. Ouvrir l'éditeur de deck depuis le salon repasse automatiquement en « pas prêt ».
 
+## Spectateurs
+
+Les parties en cours apparaissent dans « Salons ouverts sur le réseau » avec un bouton **👁 Regarder**. Le spectateur voit la partie en direct (il peut rejoindre en plein match), change de côté avec « 🔄 Changer de côté », et encourage avec « 📣 Encourager » : ses émotes montent depuis les bords de l'écran, chez les joueurs comme chez les autres spectateurs. Les joueurs voient le nombre de spectateurs sous le chrono. Jusqu'à 40 spectateurs par partie, une émote toutes les 1,5 s par spectateur.
+
 ## Arènes et trophées
 
 Victoire +30 trophées, défaite −20 (moitié si l'adversaire n'est composé que de bots). Les trophées sont stockés par pseudo dans `data/profiles.json` sur la machine qui héberge le serveur.
