@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TROPHY_LOSS, TROPHY_WIN } from "../shared/arenas";
@@ -37,6 +37,8 @@ export type Identity = { kind: "account"; key: string } | { kind: "guest"; name:
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)), "data");
 const FILE = resolve(ROOT, "db.json");
 const LEGACY = resolve(ROOT, "profiles.json");
+const BACKUPS = resolve(ROOT, "backups");
+const KEEP_BACKUPS = 14;
 const SESSION_DAYS = 60;
 
 let db: DbShape = { version: 1, accounts: {}, guests: {}, sessions: {} };
@@ -166,6 +168,23 @@ export function recordResult(id: Identity, result: "win" | "loss" | "draw", vsBo
   scheduleSave();
   return { delta, profile: p };
 }
+
+function backup() {
+  try {
+    if (!existsSync(FILE)) return;
+    mkdirSync(BACKUPS, { recursive: true });
+    const day = new Date().toISOString().slice(0, 10);
+    const target = resolve(BACKUPS, `db-${day}.json`);
+    if (!existsSync(target)) copyFileSync(FILE, target);
+    const files = readdirSync(BACKUPS).filter((f) => /^db-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+    for (const old of files.slice(0, Math.max(0, files.length - KEEP_BACKUPS))) rmSync(resolve(BACKUPS, old));
+  } catch (err) {
+    console.error("  Sauvegarde quotidienne impossible :", (err as Error).message);
+  }
+}
+
+backup();
+setInterval(backup, 3 * 3_600_000).unref();
 
 function scheduleSave() {
   if (saveTimer) return;

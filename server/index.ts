@@ -8,7 +8,8 @@ import { CARDS } from "../shared/cards";
 import { GAME_NAME } from "../shared/constants";
 import type { ClientMsg, ServerMsg } from "../shared/protocol";
 import { Room, sanitizeDeck, type Client } from "./room";
-import { isRegistered, login, logout, profileOf, register, resume, saveDeck, type Account } from "./db";
+import { isRegistered, keyOf, login, logout, profileOf, register, resume, saveDeck, type Account } from "./db";
+import { authBlocked, authFailed, authSucceeded, clientIp, closeConnection, MAX_MESSAGE_BYTES, MAX_ROOMS, MessageBudget, openConnection } from "./guard";
 
 const PORTS = process.env.PORT ? [Number(process.env.PORT)] : [3000, 8080, 8000, 5050, 4321, 0];
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)), "dist");
@@ -38,11 +39,22 @@ const http = createServer((req, res) => {
     res.end(`${GAME_NAME} : le client n'est pas compilé. Lance "npm run build" puis "npm start", ou "npm run dev".`);
     return;
   }
-  res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+  const rel = file.slice(ROOT.length).replace(/\\/g, "/");
+  const cache = rel.startsWith("/assets/")
+    ? "public, max-age=31536000, immutable"
+    : extname(file) === ".html"
+      ? "no-cache"
+      : "public, max-age=3600";
+  res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream", "cache-control": cache });
   createReadStream(file).pipe(res);
 });
 
-const wss = new WebSocketServer({ server: http, path: "/ws" });
+const wss = new WebSocketServer({
+  server: http,
+  path: "/ws",
+  maxPayload: MAX_MESSAGE_BYTES,
+  perMessageDeflate: { threshold: 512, zlibDeflateOptions: { level: 3 } },
+});
 const clients = new Map<string, Client>();
 const rooms = new Map<string, Room>();
 let counter = 0;
@@ -70,15 +82,25 @@ function leaveRoom(c: Client) {
   publishRooms();
 }
 
-function createRoom(c: Client, mode: "1v1" | "2v2"): Room {
+function createRoom(c: Client, mode: "1v1" | "2v2"): Room | null {
   leaveRoom(c);
+  if (rooms.size >= MAX_ROOMS) {
+    c.send({ type: "error", msg: "Le serveur est plein, réessaie dans un moment" });
+    return null;
+  }
   const room = new Room(roomCode(), mode, c.id, publishRooms);
   rooms.set(room.id, room);
   room.addClient(c);
   return room;
 }
 
-wss.on("connection", (ws: WebSocket) => {
+wss.on("connection", (ws: WebSocket, req) => {
+  const ip = clientIp(req);
+  if (!openConnection(ip)) {
+    ws.close(1008, "Trop de connexions");
+    return;
+  }
+  const budget = new MessageBudget();
   const id = `p${++counter}-${Math.random().toString(36).slice(2, 7)}`;
   const client: Client = {
     id, name: "Joueur", deck: sanitizeDeck(null), roomId: null, identity: { kind: "guest", name: "Joueur" },
@@ -107,6 +129,12 @@ wss.on("connection", (ws: WebSocket) => {
   };
 
   ws.on("message", (raw) => {
+    const verdict = budget.allow();
+    if (verdict === "kick") {
+      ws.close(1008, "Trop de messages");
+      return;
+    }
+    if (verdict === "drop") return;
     let msg: ClientMsg;
     try {
       msg = JSON.parse(String(raw));
@@ -143,15 +171,25 @@ wss.on("connection", (ws: WebSocket) => {
         if (client.identity.kind === "account") saveDeck(client.identity.key, client.deck);
         break;
       case "register": {
+        const blocked = authBlocked(ip, "register");
+        if (blocked) return void client.send({ type: "authError", msg: blocked });
         const r = register(String(msg.name ?? ""), String(msg.password ?? ""));
         if (typeof r === "string") client.send({ type: "authError", msg: r });
         else signIn(r.account, r.key, r.token);
         break;
       }
       case "login": {
+        const key = keyOf(String(msg.name ?? ""));
+        const blocked = authBlocked(ip, key);
+        if (blocked) return void client.send({ type: "authError", msg: blocked });
         const r = login(String(msg.name ?? ""), String(msg.password ?? ""));
-        if (typeof r === "string") client.send({ type: "authError", msg: r });
-        else signIn(r.account, r.key, r.token);
+        if (typeof r === "string") {
+          authFailed(key);
+          client.send({ type: "authError", msg: r });
+        } else {
+          authSucceeded(key);
+          signIn(r.account, r.key, r.token);
+        }
         break;
       }
       case "resume": {
@@ -176,7 +214,7 @@ wss.on("connection", (ws: WebSocket) => {
         break;
       case "solo": {
         const r = createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1");
-        fail(r.start());
+        if (r) fail(r.start());
         break;
       }
       case "join": {
@@ -217,6 +255,7 @@ wss.on("connection", (ws: WebSocket) => {
   ws.on("close", () => {
     leaveRoom(client);
     clients.delete(id);
+    closeConnection(ip);
   });
 });
 

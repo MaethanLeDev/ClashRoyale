@@ -32,6 +32,10 @@ Si le port 3000 est occupé ou bloqué (fréquent sous Windows avec Hyper-V, WSL
 
 Si les autres n'arrivent pas à se connecter, accepter la fenêtre du pare-feu Windows au premier lancement (cocher « Réseaux privés »), et vérifier que le Wi-Fi est bien en profil « Privé » et pas « Public ».
 
+## Mettre le jeu en ligne
+
+Guide complet (Raspberry Pi ou Oracle Cloud gratuit + Cloudflare Tunnel sur `clashusmb.refactor-dev.fr`) : [deploy/DEPLOY.md](deploy/DEPLOY.md). En résumé : `bash deploy/setup.sh <jeton du tunnel>`.
+
 ## Développement
 
 ```bash
