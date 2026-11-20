@@ -9,6 +9,7 @@ import { Hud } from "./hud";
 import { Net } from "./net";
 import { ARENAS, arenaFor } from "../../shared/arenas";
 import { createPreview, type Preview } from "./preview";
+import { createShowcase, hasShowcase, type Showcase } from "./game/showcase";
 import { getTilt, onTilt, setTilt } from "./settings";
 import { cardEl, h, toast } from "./ui";
 
@@ -294,7 +295,12 @@ function deckAction(id: CardId) {
 
 function showCard(id: CardId) {
   const c = CARDS[id];
-  const close = () => backdrop.remove();
+  let showcase: Showcase | null = null;
+  const close = () => {
+    showcase?.dispose();
+    backdrop.remove();
+  };
+  const stage = hasShowcase(id) ? h("div", { class: "showcase" }, h("span", { class: "showcase-hint" }, "Glisse pour tourner")) : null;
   const inDeck = app.deck.includes(id);
   const onDeckScreen = app.screen === "deck";
   let action: HTMLElement | null = null;
@@ -336,6 +342,7 @@ function showCard(id: CardId) {
     h(
       "div",
       { class: "modal panel" },
+      stage,
       h(
         "div",
         { class: "card-detail" },
@@ -353,6 +360,7 @@ function showCard(id: CardId) {
     ),
   );
   ui.appendChild(backdrop);
+  if (stage) showcase = createShowcase(stage, id);
 }
 
 function renderDeck() {
