@@ -255,10 +255,10 @@ function trackMats(o: THREE.Object3D): THREE.MeshStandardMaterial[] {
 }
 
 export function createUnitModel(card: CardDef, color: number): UnitModel {
-  if (card.look.building) return createBuildingModel(card, color);
-  if (card.look.vehicle) return createVehicleModel(card, color);
   const glb = createGlbUnitModel(card, color);
   if (glb) return glb;
+  if (card.look.building) return createBuildingModel(card, color);
+  if (card.look.vehicle) return createVehicleModel(card, color);
   const root = new THREE.Group();
   const inner = new THREE.Group();
   root.add(inner);
@@ -389,17 +389,21 @@ function createGlbUnitModel(card: CardDef, color: number): UnitModel | null {
   const inner = new THREE.Group();
   root.add(inner);
   inner.add(parts.scene);
-  const headSize = card.id === "goutier" ? 1.05 : 1.0;
+  const fixed = card.look.building || card.look.vehicle;
+  const headSize = card.look.building ? 1.25 : card.look.vehicle ? 1.15 : card.id === "goutier" ? 1.05 : 1.0;
   const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(card.id, color), alphaTest: 0.5 }));
   head.scale.set(headSize, headSize, 1);
   head.position.copy(parts.headPos);
   inner.add(head);
   const s = card.look.scale;
-  const vs = s >= 3 ? s : s * 1.3;
+  const vs = fixed ? 1 : s >= 3 ? s : s * 1.3;
   inner.scale.setScalar(vs);
+  const top = Math.max(parts.height, parts.headPos.y + headSize / 2);
   return {
     root, inner, head, legs: parts.legs, arms: parts.arms, mats: trackMats(inner), cape: parts.cape,
-    height: parts.height * vs, barY: (parts.height + 0.1) * vs + 0.15, barW: Math.min(2.4, 0.6 + vs * 0.45),
+    bulb: parts.bulb, wheels: parts.wheels.length ? parts.wheels : undefined,
+    height: top * vs, barY: (top + 0.15) * vs + 0.15,
+    barW: card.look.building ? 1.6 : card.look.vehicle ? 1.7 : Math.min(2.4, 0.6 + vs * 0.45),
   };
 }
 

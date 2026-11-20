@@ -7,7 +7,9 @@ import { CARDS, type CardId } from "../../../shared/cards";
 //   leg_L, leg_R, arm_L, arm_R : objets dont l'origine est à la hanche / l'épaule
 //   head_anchor : Empty où l'on place la tête (sprite photo)
 //   matériau "team" : recoloré à la couleur de l'équipe
-//   cape : plan animé comme la cape procédurale
+//   cape : pivot de la cape (en haut du dos), animé comme la cape procédurale
+//   bulb : mesh dont l'émission clignote (bâtiment)
+//   wheel_* : pivots des roues (véhicule), origine sur l'axe
 
 const templates = new Map<CardId, THREE.Object3D>();
 
@@ -36,6 +38,8 @@ export interface GlbParts {
   legs: THREE.Object3D[];
   arms: THREE.Object3D[];
   cape?: THREE.Mesh;
+  bulb?: THREE.Mesh;
+  wheels: THREE.Object3D[];
   headPos: THREE.Vector3;
   height: number;
 }
@@ -65,9 +69,14 @@ export function instantiateGlb(id: CardId, teamColor: number): GlbParts | null {
   const legs = [find("leg_L"), find("leg_R")].filter((o): o is THREE.Object3D => !!o);
   const arms = [find("arm_L"), find("arm_R")].filter((o): o is THREE.Object3D => !!o);
   const cape = find("cape") as THREE.Mesh | undefined;
+  const bulb = find("bulb") as THREE.Mesh | undefined;
+  const wheels: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (o.name.startsWith("wheel_")) wheels.push(o);
+  });
   scene.updateMatrixWorld(true);
   const anchor = find("head_anchor");
   const headPos = anchor ? anchor.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.4, 0);
   const box = new THREE.Box3().setFromObject(scene);
-  return { scene, legs, arms, cape, headPos, height: Math.max(box.max.y, headPos.y + 0.5) };
+  return { scene, legs, arms, cape, bulb, wheels, headPos, height: Math.max(box.max.y, headPos.y + 0.5) };
 }
