@@ -1852,3 +1852,68 @@ input[type="range"]::-moz-range-thumb {
     padding: 20px 12px;
   }
 }
+
+/* ----- Comptes et prêt ----- */
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  font-weight: 800;
+}
+
+.account-row > span {
+  flex: 1;
+  min-width: 120px;
+}
+
+.auth-modal {
+  width: min(420px, 100%);
+}
+
+.auth-modal input {
+  width: 100%;
+}
+
+input[type="password"] {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+input[type="password"]:focus {
+  border-color: var(--gold);
+}
+
+.auth-error {
+  min-height: 18px;
+  color: #ff9a9a;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.slot .tag.ready {
+  background: rgba(74, 222, 128, 0.3);
+  color: #b6f5c8;
+}
+
+.slot .tag.not-ready {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+}
+
+.slot .tag + .tag {
+  margin-left: 6px;
+}

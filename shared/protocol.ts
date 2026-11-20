@@ -82,6 +82,8 @@ export interface RoomPlayer {
   name: string;
   team: Team;
   bot: boolean;
+  ready: boolean;
+  account: boolean;
 }
 
 export interface RoomInfo {
@@ -107,7 +109,12 @@ export type ClientMsg =
   | { type: "solo"; mode: Mode }
   | { type: "deck"; deck: CardId[] }
   | { type: "play"; card: CardId; x: number; y: number }
-  | { type: "emote"; emote: string };
+  | { type: "emote"; emote: string }
+  | { type: "ready"; ready: boolean }
+  | { type: "register"; name: string; password: string }
+  | { type: "login"; name: string; password: string }
+  | { type: "resume"; token: string }
+  | { type: "logout"; token?: string };
 
 export type ServerMsg =
   | { type: "welcome"; id: string }
@@ -115,6 +122,8 @@ export type ServerMsg =
   | { type: "room"; room: RoomInfo | null }
   | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string; arena: number }
   | { type: "profile"; trophies: number; best: number; wins: number; losses: number }
+  | { type: "auth"; account: { name: string } | null; token?: string; deck?: CardId[] }
+  | { type: "authError"; msg: string }
   | StateMsg
   | { type: "end"; winner: Team | -1; crowns: [number, number]; trophies?: { delta: number; total: number } }
   | { type: "emote"; from: string; name: string; tm: Team; emote: string }

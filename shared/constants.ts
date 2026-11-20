@@ -35,9 +35,9 @@ export interface TowerDef {
 }
 
 export const TOWER_LAYOUT: TowerDef[] = [
-  { kind: "king", x: 9, y: 3, radius: 1.8, hp: 4200, range: 7, damage: 110, hitSpeed: 1.0 },
-  { kind: "princess", x: 3.5, y: 6.5, radius: 1.4, hp: 2600, range: 7.5, damage: 90, hitSpeed: 0.8 },
-  { kind: "princess", x: 14.5, y: 6.5, radius: 1.4, hp: 2600, range: 7.5, damage: 90, hitSpeed: 0.8 },
+  { kind: "king", x: 9, y: 3, radius: 1.8, hp: 4200, range: 7.5, damage: 110, hitSpeed: 1.0 },
+  { kind: "princess", x: 3.5, y: 6.5, radius: 1.4, hp: 2600, range: 8, damage: 90, hitSpeed: 0.8 },
+  { kind: "princess", x: 14.5, y: 6.5, radius: 1.4, hp: 2600, range: 8, damage: 90, hitSpeed: 0.8 },
 ];
 
 export function mirrorY(y: number): number {

@@ -80,6 +80,14 @@ tools/      script de préparation des photos, test de simulation
 
 Un deck contient 8 cartes parmi 11, modifiable dans « Mon deck ».
 
+## Comptes
+
+On joue en invité par défaut (juste un pseudo). « Créer un compte » protège le pseudo par un mot de passe et garde les trophées et le deck sur le serveur : on les retrouve depuis n'importe quel PC qui se connecte au même serveur. La session reste ouverte 60 jours sur chaque navigateur.
+
+Tout est stocké dans `data/db.json` sur la machine qui héberge le serveur (mots de passe hachés avec scrypt, jamais en clair). Pour garder les comptes en changeant de machine, il suffit de copier ce fichier. Un pseudo invité qui crée un compte récupère ses trophées d'invité.
+
+Dans un salon, chaque joueur indique qu'il est **prêt** ; l'hôte ne peut lancer la partie que quand tout le monde l'est. Ouvrir l'éditeur de deck depuis le salon repasse automatiquement en « pas prêt ».
+
 ## Arènes et trophées
 
 Victoire +30 trophées, défaite −20 (moitié si l'adversaire n'est composé que de bots). Les trophées sont stockés par pseudo dans `data/profiles.json` sur la machine qui héberge le serveur.

@@ -6,13 +6,14 @@ import { Bot } from "../shared/ai/heuristic";
 import { emoteById } from "../shared/emotes";
 import { botDeck, brainSummary, createBot, type BotLike } from "./brains";
 import { arenaFor } from "../shared/arenas";
-import { getProfile, recordResult } from "./profiles";
+import { profileOf, recordResult, type Identity } from "./db";
 
 export interface Client {
   id: string;
   name: string;
   deck: CardId[];
   roomId: string | null;
+  identity: Identity;
   send(msg: ServerMsg): void;
 }
 
@@ -53,7 +54,7 @@ export class Room {
   }
 
   private topTrophies(): number {
-    return Math.max(0, ...this.humans.map((s) => getProfile(s.name).trophies));
+    return Math.max(0, ...this.humans.map((s) => profileOf(s.client!.identity).trophies));
   }
 
   info(): RoomInfo {
@@ -61,7 +62,7 @@ export class Room {
     return {
       id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena,
       botStyle: brainSummary(arena),
-      players: this.slots.map(({ id, name, team, bot }) => ({ id, name, team, bot })),
+      players: this.slots.map(({ id, name, team, bot, ready, account }) => ({ id, name, team, bot, ready, account })),
     };
   }
 
@@ -91,7 +92,7 @@ export class Room {
       this.slots = this.slots.filter((s) => s !== bot);
       team = bot.team;
     }
-    this.slots.push({ id: c.id, name: c.name, team, bot: false, client: c });
+    this.slots.push({ id: c.id, name: c.name, team, bot: false, ready: false, account: c.identity.kind === "account", client: c });
     c.roomId = this.id;
     this.changed();
     return null;
@@ -124,7 +125,7 @@ export class Room {
     const team = this.freeTeam();
     if (team === null) return "Le salon est plein";
     const name = BOT_NAMES[this.botCounter++ % BOT_NAMES.length];
-    this.slots.push({ id: `bot-${this.id}-${this.botCounter}`, name, team, bot: true });
+    this.slots.push({ id: `bot-${this.id}-${this.botCounter}`, name, team, bot: true, ready: true, account: false });
     this.changed();
     return null;
   }
@@ -169,8 +170,25 @@ export class Room {
     this.changed();
   }
 
+  setReady(c: Client, ready: boolean) {
+    const slot = this.slots.find((s) => s.id === c.id);
+    if (!slot || this.status !== "lobby") return;
+    slot.ready = ready;
+    this.changed();
+  }
+
+  refreshClient(c: Client) {
+    const slot = this.slots.find((s) => s.id === c.id);
+    if (!slot) return;
+    slot.name = c.name;
+    slot.account = c.identity.kind === "account";
+    this.changed();
+  }
+
   start(): string | null {
     if (this.status !== "lobby") return "Partie déjà en cours";
+    const waiting = this.humans.filter((s) => s.id !== this.hostId && !s.ready).map((s) => s.name);
+    if (waiting.length) return `En attente de : ${waiting.join(", ")}`;
     while (this.freeTeam() !== null) this.addBot();
     const sim = new Sim();
     if (process.env.DEV_MATCH_SECONDS) sim.timeLeft = Number(process.env.DEV_MATCH_SECONDS);
@@ -225,12 +243,13 @@ export class Room {
         if (!s.client) continue;
         const opponentsAllBots = this.slots.filter((o) => o.team !== s.team).every((o) => o.bot);
         const result = winner === -1 ? "draw" : winner === s.team ? "win" : "loss";
-        const { delta, profile } = recordResult(s.name, result, opponentsAllBots);
+        const { delta, profile } = recordResult(s.client.identity, result, opponentsAllBots);
         s.client.send({ type: "end", winner, crowns: sim.crowns, trophies: { delta, total: profile.trophies } });
         s.client.send({ type: "profile", trophies: profile.trophies, best: profile.best, wins: profile.wins, losses: profile.losses });
       }
       this.stop();
       this.slots = this.slots.filter((s) => !s.bot || s.id.startsWith("bot-"));
+      for (const s of this.slots) if (!s.bot) s.ready = false;
       this.changed();
     }
   }

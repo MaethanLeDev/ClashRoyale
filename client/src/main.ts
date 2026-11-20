@@ -32,6 +32,13 @@ const store = {
       /* stockage indisponible */
     }
   },
+  remove(key: string) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* stockage indisponible */
+    }
+  },
 };
 
 function loadDeck(): CardId[] {
@@ -46,6 +53,7 @@ function loadDeck(): CardId[] {
 
 const app = {
   name: store.get("name") ?? "",
+  account: null as string | null,
   deck: loadDeck(),
   myId: "",
   rooms: [] as RoomInfo[],
@@ -100,6 +108,20 @@ function ensureName(): boolean {
 
 // ---------- Home ----------
 
+function buildProfileBar(): HTMLElement {
+  const arena = arenaFor(app.profile.trophies);
+  const bar = h(
+    "div",
+    { class: "profile-bar", id: "profile-bar", onclick: renderRoad },
+    h("div", { class: "icon" }, arena.icon),
+    h("div", { class: "info" }, h("div", { class: "trophies" }, `🏆 ${app.profile.trophies}`), h("div", { class: "arena-name" }, `Arène ${arena.id + 1} · ${arena.name}`)),
+    h("span", { class: "btn small ghost" }, "Voie des trophées"),
+  );
+  bar.style.setProperty("--a1", arena.colors[0]);
+  bar.style.setProperty("--a2", arena.colors[1]);
+  return bar;
+}
+
 function renderHome() {
   app.screen = "home";
   const pseudo = h("input", { id: "pseudo", type: "text", maxlength: "16", placeholder: "Ton pseudo", value: app.name }) as HTMLInputElement;
@@ -127,16 +149,7 @@ function renderHome() {
 
   const roomsList = h("div", { class: "rooms", id: "rooms" });
   const deckPreview = h("div", { class: "deck-preview" }, ...app.deck.map((c) => cardEl(c, { showName: false })));
-  const arena = arenaFor(app.profile.trophies);
-  const profileBar = h(
-    "div",
-    { class: "profile-bar", id: "profile-bar", onclick: renderRoad, style: { "--a1": arena.colors[0], "--a2": arena.colors[1] } as Record<string, string> },
-    h("div", { class: "icon" }, arena.icon),
-    h("div", { class: "info" }, h("div", { class: "trophies" }, `🏆 ${app.profile.trophies}`), h("div", { class: "arena-name" }, `Arène ${arena.id + 1} · ${arena.name}`)),
-    h("span", { class: "btn small ghost" }, "Voie des trophées"),
-  );
-  profileBar.style.setProperty("--a1", arena.colors[0]);
-  profileBar.style.setProperty("--a2", arena.colors[1]);
+  const profileBar = buildProfileBar();
 
   const el = h(
     "div",
@@ -157,7 +170,25 @@ function renderHome() {
             { class: "panel" },
             h("h2", {}, "Joueur"),
             profileBar,
-            h("div", { class: "field" }, h("label", {}, "Pseudo"), pseudo),
+            app.account
+              ? h(
+                  "div",
+                  { class: "account-row" },
+                  h("span", {}, "👤 Connecté : ", h("b", {}, app.account)),
+                  h("button", { class: "btn small ghost", onclick: doLogout }, "Se déconnecter"),
+                )
+              : h(
+                  "div",
+                  {},
+                  h("div", { class: "field" }, h("label", {}, "Pseudo"), pseudo),
+                  h(
+                    "div",
+                    { class: "account-row" },
+                    h("span", { class: "help" }, "Tu joues en invité."),
+                    h("button", { class: "btn small ghost", onclick: () => showAuth("login") }, "Se connecter"),
+                    h("button", { class: "btn small", onclick: () => showAuth("register") }, "Créer un compte"),
+                  ),
+                ),
             h("h2", { style: { marginTop: "18px" } }, "Jouer"),
             h(
               "div",
@@ -534,7 +565,12 @@ function renderRoom() {
         { class: `slot ${p.id === app.myId ? "me" : ""}` },
         h("div", { class: "avatar" }, p.bot ? "🤖" : p.name.slice(0, 1).toUpperCase()),
         h("span", {}, p.name),
-        p.id === room.hostId ? h("span", { class: "tag" }, "Hôte") : p.bot ? h("span", { class: "tag" }, "Bot") : null,
+        p.account ? h("span", { class: "tag", title: "Compte" }, "👤") : null,
+        p.id === room.hostId
+          ? h("span", { class: "tag" }, "Hôte")
+          : p.bot
+            ? h("span", { class: "tag" }, "Bot")
+            : h("span", { class: `tag ${p.ready ? "ready" : "not-ready"}` }, p.ready ? "Prêt ✓" : "Pas prêt"),
       ),
     );
     while (slots.length < per) slots.push(h("div", { class: "slot empty-slot" }, "En attente d'un joueur… (sinon un bot)"));
@@ -548,6 +584,8 @@ function renderRoom() {
     ),
   );
   const leave = () => net.send({ type: "leave" });
+  const me = room.players.find((p) => p.id === app.myId);
+  const waiting = room.players.filter((p) => !p.bot && p.id !== room.hostId && !p.ready).map((p) => p.name);
   const arena = ARENAS[room.arena] ?? ARENAS[0];
   const stage = h(
     "div",
@@ -563,7 +601,18 @@ function renderRoom() {
   const deckPanel = h(
     "div",
     { class: "panel", style: { marginTop: "18px" } },
-    h("div", { class: "topbar", style: { marginBottom: "10px" } }, h("h2", { style: { margin: "0", flex: "1" } }, "Ton deck"), h("button", { class: "btn small ghost", onclick: renderDeck }, "Changer de deck")),
+    h(
+      "div",
+      { class: "topbar", style: { marginBottom: "10px" } },
+      h("h2", { style: { margin: "0", flex: "1" } }, "Ton deck"),
+      h("button", {
+        class: "btn small ghost",
+        onclick: () => {
+          if (me?.ready) net.send({ type: "ready", ready: false });
+          renderDeck();
+        },
+      }, "Changer de deck"),
+    ),
     h("div", { class: "deck-preview" }, ...app.deck.map((c) => cardEl(c, { showName: false }))),
   );
   mount(
@@ -588,8 +637,19 @@ function renderRoom() {
           "div",
           { style: { marginTop: "18px", textAlign: "center" } },
           isHost
-            ? h("button", { class: "btn gold big", onclick: () => net.send({ type: "start" }) }, "Lancer la partie")
-            : h("div", { class: "help" }, "En attente que l'hôte lance la partie…"),
+            ? waiting.length
+              ? h("div", {}, h("button", { class: "btn gold big", disabled: "true" }, "Lancer la partie"), h("div", { class: "help", style: { marginTop: "8px" } }, `En attente de : ${waiting.join(", ")}`))
+              : h("button", { class: "btn gold big", onclick: () => net.send({ type: "start" }) }, "Lancer la partie")
+            : h(
+                "div",
+                {},
+                h(
+                  "button",
+                  { class: `btn big ${me?.ready ? "ghost" : "gold"}`, onclick: () => net.send({ type: "ready", ready: !me?.ready }) },
+                  me?.ready ? "Je ne suis plus prêt" : "Je suis prêt !",
+                ),
+                h("div", { class: "help", style: { marginTop: "8px" } }, me?.ready ? "L'hôte peut lancer la partie dès que tout le monde est prêt." : "Choisis ton deck, puis indique que tu es prêt."),
+              ),
           h("div", { class: "help", style: { marginTop: "10px" } }, "Les places vides sont complétées par des bots au lancement."),
         ),
         deckPanel,
@@ -605,6 +665,9 @@ function renderRoom() {
 
 function startGame(team: Team, players: PlayerSnap[], arena: number) {
   stopGame();
+  for (const m of document.querySelectorAll(".modal-backdrop")) m.remove();
+  authModal = null;
+  swapIn = null;
   disposeDiorama();
   app.screen = "game";
   current?.remove();
@@ -656,8 +719,77 @@ net.onStatus = (ok) => {
 };
 
 net.onOpen = () => {
-  if (app.name) net.send({ type: "hello", name: app.name, deck: app.deck });
+  const token = store.get("authToken");
+  if (token) net.send({ type: "resume", token });
+  if (app.name || token) net.send({ type: "hello", name: app.name, deck: app.deck });
 };
+
+let authModal: { el: HTMLElement; error: HTMLElement } | null = null;
+
+function showAuth(mode: "login" | "register") {
+  authModal?.el.remove();
+  const name = h("input", { type: "text", maxlength: "16", placeholder: "Pseudo", value: app.name, autocomplete: "username" }) as HTMLInputElement;
+  const pass = h("input", { type: "password", placeholder: "Mot de passe", autocomplete: mode === "login" ? "current-password" : "new-password" }) as HTMLInputElement;
+  const confirm = h("input", { type: "password", placeholder: "Confirme le mot de passe", autocomplete: "new-password" }) as HTMLInputElement;
+  const error = h("div", { class: "auth-error" });
+  const submit = () => {
+    error.textContent = "";
+    if (mode === "register" && pass.value !== confirm.value) {
+      error.textContent = "Les deux mots de passe ne sont pas identiques";
+      return;
+    }
+    net.send({ type: mode, name: name.value, password: pass.value });
+  };
+  for (const input of [name, pass, confirm]) input.addEventListener("keydown", (e) => e.key === "Enter" && submit());
+  const close = () => {
+    backdrop.remove();
+    authModal = null;
+  };
+  const backdrop = h(
+    "div",
+    { class: "modal-backdrop", onclick: (e: Event) => e.target === backdrop && close() },
+    h(
+      "div",
+      { class: "modal panel auth-modal" },
+      h(
+        "div",
+        { class: "segmented" },
+        h("button", { class: mode === "login" ? "on" : "", onclick: () => showAuth("login") }, "Connexion"),
+        h("button", { class: mode === "register" ? "on" : "", onclick: () => showAuth("register") }, "Créer un compte"),
+      ),
+      h(
+        "div",
+        { class: "help", style: { margin: "12px 0" } },
+        mode === "login"
+          ? "Connecte-toi pour retrouver tes trophées et ton deck depuis n'importe quel PC."
+          : "Ton pseudo sera protégé par ton mot de passe. Tes trophées d'invité sont repris si tu gardes le même pseudo.",
+      ),
+      h("div", { class: "stack" }, name, pass, mode === "register" ? confirm : null, error),
+      h(
+        "div",
+        { class: "row", style: { marginTop: "16px", justifyContent: "flex-end" } },
+        h("button", { class: "btn small ghost", onclick: close }, "Annuler"),
+        h("button", { class: "btn small gold", onclick: submit }, mode === "login" ? "Se connecter" : "Créer le compte"),
+      ),
+    ),
+  );
+  ui.appendChild(backdrop);
+  authModal = { el: backdrop, error };
+  (app.name ? pass : name).focus();
+}
+
+function doLogout() {
+  net.send({ type: "logout", token: store.get("authToken") ?? undefined });
+  store.remove("authToken");
+  app.name = "";
+  store.remove("name");
+}
+
+function refreshScreen() {
+  if (app.screen === "home") renderHome();
+  else if (app.screen === "room") renderRoom();
+  else if (app.screen === "deck") renderDeck();
+}
 
 net.on((msg: ServerMsg) => {
   switch (msg.type) {
@@ -671,8 +803,9 @@ net.on((msg: ServerMsg) => {
     case "room":
       app.room = msg.room;
       if (app.screen === "game") break;
-      if (msg.room) renderRoom();
-      else if (app.screen === "room") renderHome();
+      if (msg.room) {
+        if (app.screen === "room" || app.screen === "home") renderRoom();
+      } else if (app.screen === "room") renderHome();
       break;
     case "start":
       startGame(msg.team, msg.players, msg.arena ?? 0);
@@ -690,9 +823,36 @@ net.on((msg: ServerMsg) => {
         setTimeout(() => g.hud.showEnd(msg.winner, msg.crowns, msg.trophies), 1700);
       }
       break;
+    case "auth":
+      if (msg.account) {
+        const fresh = app.account !== msg.account.name;
+        app.account = msg.account.name;
+        app.name = msg.account.name;
+        store.set("name", app.name);
+        if (msg.token) store.set("authToken", msg.token);
+        if (msg.deck && msg.deck.length === DECK_SIZE) {
+          app.deck = msg.deck.slice();
+          store.set("deck", JSON.stringify(app.deck));
+        }
+        if (authModal) {
+          authModal.el.remove();
+          authModal = null;
+        }
+        if (fresh && msg.token) toast(ui, `Bienvenue ${app.account} !`, true);
+      } else {
+        if (app.account) toast(ui, "Déconnecté");
+        app.account = null;
+        store.remove("authToken");
+      }
+      if (app.screen !== "game") refreshScreen();
+      break;
+    case "authError":
+      if (authModal) authModal.error.textContent = msg.msg;
+      else toast(ui, msg.msg);
+      break;
     case "profile":
       app.profile = { trophies: msg.trophies, best: msg.best, wins: msg.wins, losses: msg.losses };
-      if (app.screen === "home") renderHome();
+      if (app.screen === "home") document.getElementById("profile-bar")?.replaceWith(buildProfileBar());
       if (app.screen === "road") renderRoad();
       break;
     case "emote":

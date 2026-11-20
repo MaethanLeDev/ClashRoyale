@@ -8,7 +8,7 @@ import { CARDS } from "../shared/cards";
 import { GAME_NAME } from "../shared/constants";
 import type { ClientMsg, ServerMsg } from "../shared/protocol";
 import { Room, sanitizeDeck, type Client } from "./room";
-import { getProfile } from "./profiles";
+import { isRegistered, login, logout, profileOf, register, resume, saveDeck, type Account } from "./db";
 
 const PORTS = process.env.PORT ? [Number(process.env.PORT)] : [3000, 8080, 8000, 5050, 4321, 0];
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)), "dist");
@@ -81,7 +81,7 @@ function createRoom(c: Client, mode: "1v1" | "2v2"): Room {
 wss.on("connection", (ws: WebSocket) => {
   const id = `p${++counter}-${Math.random().toString(36).slice(2, 7)}`;
   const client: Client = {
-    id, name: "Joueur", deck: sanitizeDeck(null), roomId: null,
+    id, name: "Joueur", deck: sanitizeDeck(null), roomId: null, identity: { kind: "guest", name: "Joueur" },
     send(msg: ServerMsg) {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
     },
@@ -91,6 +91,20 @@ wss.on("connection", (ws: WebSocket) => {
 
   const roomOf = () => (client.roomId ? rooms.get(client.roomId) : undefined);
   const fail = (msg: string | null) => msg && client.send({ type: "error", msg });
+  const sendProfile = () => {
+    const p = profileOf(client.identity);
+    client.send({ type: "profile", trophies: p.trophies, best: p.best, wins: p.wins, losses: p.losses });
+  };
+  const signIn = (account: Account, key: string, token?: string) => {
+    client.identity = { kind: "account", key };
+    client.name = account.name;
+    if (account.deck) client.deck = sanitizeDeck(account.deck);
+    else saveDeck(key, client.deck);
+    client.send({ type: "auth", account: { name: account.name }, token, deck: client.deck });
+    sendProfile();
+    roomOf()?.refreshClient(client);
+    publishRooms();
+  };
 
   ws.on("message", (raw) => {
     let msg: ClientMsg;
@@ -101,17 +115,61 @@ wss.on("connection", (ws: WebSocket) => {
     }
     const room = roomOf();
     switch (msg.type) {
-      case "hello":
-        client.name = String(msg.name ?? "").trim().slice(0, 16) || "Joueur";
-        if (msg.deck) client.deck = sanitizeDeck(msg.deck);
-        {
-          const p = getProfile(client.name);
-          client.send({ type: "profile", trophies: p.trophies, best: p.best, wins: p.wins, losses: p.losses });
+      case "hello": {
+        if (msg.deck) {
+          client.deck = sanitizeDeck(msg.deck);
+          if (client.identity.kind === "account") saveDeck(client.identity.key, client.deck);
         }
+        if (client.identity.kind === "account") {
+          sendProfile();
+          break;
+        }
+        const wanted = String(msg.name ?? "").trim().slice(0, 16) || "Joueur";
+        if (isRegistered(wanted)) {
+          client.name = `${wanted} (invité)`.slice(0, 24);
+          client.identity = { kind: "guest", name: client.name };
+          fail(`Le pseudo « ${wanted} » est protégé par un mot de passe : connecte-toi pour l'utiliser.`);
+        } else {
+          client.name = wanted;
+          client.identity = { kind: "guest", name: wanted };
+        }
+        sendProfile();
+        roomOf()?.refreshClient(client);
         publishRooms();
         break;
+      }
       case "deck":
         client.deck = sanitizeDeck(msg.deck);
+        if (client.identity.kind === "account") saveDeck(client.identity.key, client.deck);
+        break;
+      case "register": {
+        const r = register(String(msg.name ?? ""), String(msg.password ?? ""));
+        if (typeof r === "string") client.send({ type: "authError", msg: r });
+        else signIn(r.account, r.key, r.token);
+        break;
+      }
+      case "login": {
+        const r = login(String(msg.name ?? ""), String(msg.password ?? ""));
+        if (typeof r === "string") client.send({ type: "authError", msg: r });
+        else signIn(r.account, r.key, r.token);
+        break;
+      }
+      case "resume": {
+        const r = resume(String(msg.token ?? ""));
+        if (r) signIn(r.account, r.key);
+        else client.send({ type: "auth", account: null });
+        break;
+      }
+      case "logout":
+        if (msg.token) logout(String(msg.token));
+        client.identity = { kind: "guest", name: "Joueur" };
+        client.name = "Joueur";
+        client.send({ type: "auth", account: null });
+        sendProfile();
+        roomOf()?.refreshClient(client);
+        break;
+      case "ready":
+        if (room) room.setReady(client, !!msg.ready);
         break;
       case "create":
         createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1");
