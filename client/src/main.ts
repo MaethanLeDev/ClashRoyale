@@ -4,6 +4,7 @@ import { GAME_NAME, RESOURCE_NAME } from "../../shared/constants";
 import type { Mode, PlayerSnap, RoomInfo, ServerMsg, Team } from "../../shared/protocol";
 import { GameView } from "./game/view";
 import { loadHeads } from "./game/textures";
+import { loadModels } from "./game/glb";
 import { Hud } from "./hud";
 import { Net } from "./net";
 import { ARENAS, arenaFor } from "../../shared/arenas";
@@ -697,7 +698,7 @@ net.on((msg: ServerMsg) => {
 });
 
 document.title = GAME_NAME;
-loadHeads().then(() => {
+Promise.all([loadHeads(), loadModels()]).then(() => {
   renderHome();
   net.connect();
 });

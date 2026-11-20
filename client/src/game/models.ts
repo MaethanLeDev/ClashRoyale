@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { CardDef } from "../../../shared/cards";
 import type { TowerKind } from "../../../shared/constants";
 import { headTexture, noiseTexture, textTexture } from "./textures";
+import { instantiateGlb } from "./glb";
 
 const mat = (color: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
   new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0, ...opts });
@@ -256,6 +257,8 @@ function trackMats(o: THREE.Object3D): THREE.MeshStandardMaterial[] {
 export function createUnitModel(card: CardDef, color: number): UnitModel {
   if (card.look.building) return createBuildingModel(card, color);
   if (card.look.vehicle) return createVehicleModel(card, color);
+  const glb = createGlbUnitModel(card, color);
+  if (glb) return glb;
   const root = new THREE.Group();
   const inner = new THREE.Group();
   root.add(inner);
@@ -366,6 +369,27 @@ export function createUnitModel(card: CardDef, color: number): UnitModel {
   return {
     root, inner, head, legs, arms, mats: trackMats(inner), cape,
     height: 1.9 * vs, barY: 2.0 * vs + 0.15, barW: Math.min(2.4, 0.6 + vs * 0.45),
+  };
+}
+
+function createGlbUnitModel(card: CardDef, color: number): UnitModel | null {
+  const parts = instantiateGlb(card.id, color);
+  if (!parts) return null;
+  const root = new THREE.Group();
+  const inner = new THREE.Group();
+  root.add(inner);
+  inner.add(parts.scene);
+  const headSize = card.id === "goutier" ? 1.05 : 1.0;
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(card.id, color), alphaTest: 0.5 }));
+  head.scale.set(headSize, headSize, 1);
+  head.position.copy(parts.headPos);
+  inner.add(head);
+  const s = card.look.scale;
+  const vs = s >= 3 ? s : s * 1.3;
+  inner.scale.setScalar(vs);
+  return {
+    root, inner, head, legs: parts.legs, arms: parts.arms, mats: trackMats(inner), cape: parts.cape,
+    height: parts.height * vs, barY: (parts.height + 0.1) * vs + 0.15, barW: Math.min(2.4, 0.6 + vs * 0.45),
   };
 }
 
