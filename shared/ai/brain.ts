@@ -1,10 +1,10 @@
-import { CARD_IDS, CARDS, type CardId } from "../cards";
+import { CARDS, type CardId } from "../cards";
 import { ARENA_H, ARENA_W, BRIDGES_X, MAX_ELIXIR, RIVER_Y } from "../constants";
 import type { Team } from "../protocol";
 import { canDeployAt, snapTile } from "../rules";
 import type { Sim, SimPlayer } from "../sim";
 
-export const AI_CARDS: CardId[] = CARD_IDS.slice();
+export const AI_CARDS: CardId[] = ["goutier", "midas", "valere", "tordeux", "natis", "samy", "imad", "niels", "nazar", "tarit"];
 
 export interface BrainFile {
   version: 1;

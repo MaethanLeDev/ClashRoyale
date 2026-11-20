@@ -475,6 +475,12 @@ export class GameView {
         this.floatText(toWorld(ev.x, ev.y, 4), "BOUM !", "#ff9a3c", 40);
         break;
       }
+      case "splash": {
+        const p = toWorld(ev.x, ev.y, 0.7);
+        this.fx.fireball(p, ev.r * 1.1);
+        this.fx.ring(toWorld(ev.x, ev.y), 0xff9a3c, 0.3, ev.r, 0.4, 0.85);
+        break;
+      }
       case "tiebreak": {
         this.floatText(new THREE.Vector3(0, 6, 0), "Départage !", "#ffffff", 46);
         break;
@@ -766,6 +772,10 @@ export class GameView {
         this.fx.burst(p.pos.clone().setY(0.15), 0x7a5634, 2, { speed: 1.2, size: 0.1, up: 2.2, life: 0.5 });
       }
       if (p.kind === "dig") p.obj.position.y = 0.02 + Math.abs(Math.sin(this.time * 14)) * 0.05;
+      if (p.kind === "fireball" && p.trailT <= 0) {
+        p.trailT = 0.02;
+        this.fx.spark(p.pos.clone(), 0xff7a1a, 0.9, 0.3);
+      }
       if ((p.kind === "finger" || p.kind === "idea") && p.trailT <= 0) {
         p.trailT = 0.02;
         this.fx.spark(p.pos.clone(), p.kind === "finger" ? 0xffc400 : 0xfff3a0, 0.55, 0.22);

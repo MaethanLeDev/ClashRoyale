@@ -57,7 +57,8 @@ export type GameEvent =
   | { e: "spellCast"; c: CardId; x: number; y: number; r: number; tm: Team; delay: number }
   | { e: "smash"; id: number; tid: number; x: number; y: number }
   | { e: "explode"; x: number; y: number; r: number; tm: Team }
-  | { e: "tiebreak" };
+  | { e: "tiebreak" }
+  | { e: "splash"; x: number; y: number; r: number; tm: Team };
 
 export interface StateMsg {
   type: "state";

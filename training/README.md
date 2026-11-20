@@ -63,6 +63,10 @@ Il affiche (et écrit dans `training/rapport.md`) :
 
 `npm run train:report -- --games 100` pour un tournoi plus précis (plus long).
 
+## Ajouter une carte sans casser les cerveaux
+
+Les cerveaux connaissent une liste figée de cartes (`AI_CARDS` dans `shared/ai/brain.ts`). Une nouvelle carte (comme Savy) est jouable tout de suite par les humains, et les bots voient ses troupes sur le terrain comme n'importe quelle unité. Pour que les bots apprennent à la jouer : l'ajouter à `AI_CARDS` et à un deck dans `shared/ai/styles.ts`, puis relancer une nuit avec `--fresh` (les anciens cerveaux deviennent incompatibles).
+
 ## Ce que ça produit
 
 Un fichier JSON par bot dans `server/brains/` (`rush.json`, `defense.json`, `preshot.json`, `boss.json`). Chaque fichier contient environ 17 000 nombres : les poids du réseau de neurones, plus le deck du bot et quelques statistiques. Le serveur du jeu les recharge tout seul quand ils changent, sans redémarrer.
