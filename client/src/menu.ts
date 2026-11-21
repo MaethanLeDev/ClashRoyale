@@ -62,8 +62,55 @@ export class Menu {
       if (e.key === "ArrowLeft") this.goTo(Math.max(0, this.index - 1));
       if (e.key === "ArrowRight") this.goTo(Math.min(2, this.index + 1));
     });
+    this.mouseSwipe();
     requestAnimationFrame(() => this.goTo(1, false));
     on("room", () => this.syncLobby());
+  }
+
+  /** Le défilement natif suit le doigt et le pavé tactile ; on ajoute le clic-glisser à la souris. */
+  private mouseSwipe() {
+    const pager = this.pager;
+    pager.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      if ((e.target as Element).closest("input, .dk-slot, .dk-pop, .code-wrap")) return;
+      const x0 = e.clientX;
+      const left0 = pager.scrollLeft;
+      const start = this.index;
+      let t = performance.now();
+      let lastX = x0;
+      let v = 0;
+      let dragging = false;
+      const move = (ev: PointerEvent) => {
+        const dx = ev.clientX - x0;
+        if (!dragging) {
+          if (Math.abs(dx) < 8) return;
+          dragging = true;
+          pager.classList.add("mouse-drag");
+        }
+        const now = performance.now();
+        v = (ev.clientX - lastX) / Math.max(1, now - t);
+        lastX = ev.clientX;
+        t = now;
+        pager.scrollLeft = left0 - dx;
+      };
+      const up = (ev: PointerEvent) => {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+        if (!dragging) return;
+        const dx = ev.clientX - x0;
+        const w = pager.clientWidth;
+        let target = start;
+        if (dx < -w * 0.18 || v < -0.4) target = start + 1;
+        else if (dx > w * 0.18 || v > 0.4) target = start - 1;
+        target = Math.max(0, Math.min(2, target));
+        pager.classList.remove("mouse-drag");
+        this.goTo(target);
+        // Le relâchement ne doit pas déclencher le bouton sous la souris
+        addEventListener("click", (c) => (c.stopPropagation(), c.preventDefault()), { capture: true, once: true });
+      };
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    });
   }
 
   goTo(i: number, smooth = true) {

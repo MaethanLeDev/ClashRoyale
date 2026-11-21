@@ -60,6 +60,23 @@ export type GameEvent =
   | { e: "tiebreak" }
   | { e: "splash"; x: number; y: number; r: number; tm: Team };
 
+/** Carte qu'un joueur tient au-dessus de l'arène (hologramme montré à son allié). */
+export interface AimSnap {
+  c: CardId;
+  x: number;
+  y: number;
+}
+
+/** Ce que l'on voit de son allié en 2v2. */
+export interface AllySnap {
+  id: string;
+  name: string;
+  bot: boolean;
+  el: number;
+  hand: CardId[];
+  aim: AimSnap | null;
+}
+
 export interface StateMsg {
   type: "state";
   t: number;
@@ -73,6 +90,7 @@ export interface StateMsg {
   hand: CardId[];
   next: CardId | null;
   el: number;
+  ally?: AllySnap;
   ev: GameEvent[];
   winner: Team | -1 | null;
 }
@@ -110,6 +128,7 @@ export type ClientMsg =
   | { type: "solo"; mode: Mode }
   | { type: "deck"; deck: CardId[] }
   | { type: "play"; card: CardId; x: number; y: number }
+  | { type: "aim"; card: CardId | null; x?: number; y?: number }
   | { type: "emote"; emote: string }
   | { type: "ready"; ready: boolean }
   | { type: "register"; name: string; password: string }

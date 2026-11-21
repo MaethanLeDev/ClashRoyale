@@ -109,6 +109,15 @@ body.is-dragging .pager {
   overflow-x: hidden;
 }
 
+.pager.mouse-drag {
+  scroll-snap-type: none;
+  cursor: grabbing;
+}
+
+.pager.mouse-drag * {
+  pointer-events: none;
+}
+
 .page {
   flex: 0 0 100%;
   height: 100%;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CARDS, type CardDef, type CardId } from "../../../shared/cards";
 import { ARENA_H, ARENA_W, RIVER_HALF, RIVER_Y } from "../../../shared/constants";
-import type { GameEvent, StateMsg, Team } from "../../../shared/protocol";
+import type { AimSnap, GameEvent, Mode, StateMsg, Team } from "../../../shared/protocol";
 import { UNIT_STATE } from "../../../shared/protocol";
 import { nearestDeployable, POCKET_DEPTH, pocketOpen } from "../../../shared/rules";
 import { buildArena, toArena, toWorld, type Arena } from "./arena";
@@ -73,7 +73,10 @@ export interface ViewOptions {
   arena: number;
   preview?: boolean;
   orbit?: number;
+  mode?: Mode;
   getInsets(): { top: number; bottom: number };
+  /** 2v2 : la carte tenue au-dessus de l'arène (null quand on lâche), pour l'hologramme de l'allié. */
+  onAim?(card: CardId | null, x: number, y: number): void;
   onPlay(card: CardId, x: number, y: number): void;
   onSelect(card: CardId | null, dragging: boolean): void;
   onToast(msg: string): void;
@@ -153,7 +156,7 @@ export class GameView {
     sun.shadow.normalBias = 0.03;
     this.scene.add(sun);
 
-    this.arena = buildArena(th);
+    this.arena = buildArena(th, opts.mode ?? "1v1");
     this.scene.add(this.arena.group);
     this.fx = new Fx(this.scene);
 
@@ -268,6 +271,7 @@ export class GameView {
 
   applyState(msg: StateMsg) {
     this.state = msg;
+    this.setAllyAim(msg.ally?.aim ?? null, msg.ally?.name ?? "");
     const seen = new Set<number>();
     for (const t of msg.towers) {
       seen.add(t.id);
@@ -277,6 +281,9 @@ export class GameView {
         const model = createTowerModel(t.k, this.colorFor(t.tm), facing);
         const pos = toWorld(t.x, t.y);
         model.group.position.copy(pos);
+        // 2v2 : deux tours du roi imbriquées ; la seconde est un peu plus haute et en retrait
+        const twin = t.k === "king" && [...this.towers.values()].some((o) => o.kind === "king" && o.team === t.tm);
+        if (twin) model.group.scale.set(1, 1.07, 0.94);
         this.scene.add(model.group);
         const bar = new Bar(t.k === "king" ? 2.6 : 2.0, this.colorFor(t.tm), true);
         this.scene.add(bar.group);
@@ -817,6 +824,7 @@ export class GameView {
     this.floaters = keep;
 
     this.updateGhost();
+    this.updateHolo(dt);
   }
 
   // ---------- Input ----------
@@ -944,18 +952,22 @@ export class GameView {
     const active = card && (this.dragging || this.tapActive || this.pointer.inside);
     if (!card || !active) {
       this.ghost.visible = false;
+      this.sendAim(null);
       return;
     }
     if (this.dragging && this.isOverHud(this.pointer.x, this.pointer.y)) {
       this.ghost.visible = false;
+      this.sendAim(null);
       return;
     }
     const raw = this.pick(this.pointer.x, this.pointer.y);
     const p = raw ? this.placementFor(card, raw) : null;
     if (!p) {
       this.ghost.visible = false;
+      this.sendAim(null);
       return;
     }
+    this.sendAim({ c: card.id, x: p.x, y: p.y });
     this.ghost.visible = true;
     const w = toWorld(p.x, p.y);
     this.ghost.position.lerp(w, this.ghost.userData.init ? 0.5 : 1);
@@ -980,6 +992,126 @@ export class GameView {
     const hs = card.id === "samy" ? 2.4 : 1.1;
     this.ghostHead.scale.setScalar(hs);
     this.ghostHead.position.y = card.kind === "spell" ? 3 : 1.4 + hs * 0.3 + Math.sin(this.time * 5) * 0.08;
+  }
+
+  // ---------- 2v2 : visée partagée et hologramme de l'allié ----------
+
+  private aimSent: AimSnap | null = null;
+  private aimAt = 0;
+
+  private sendAim(aim: AimSnap | null) {
+    if (!this.opts.onAim) return;
+    const prev = this.aimSent;
+    if (!aim) {
+      if (prev) {
+        this.aimSent = null;
+        this.opts.onAim(null, 0, 0);
+      }
+      return;
+    }
+    const now = performance.now();
+    const moved = !prev || prev.c !== aim.c || Math.hypot(prev.x - aim.x, prev.y - aim.y) > 0.2;
+    if (!moved || (prev && prev.c === aim.c && now - this.aimAt < 100)) return;
+    this.aimSent = aim;
+    this.aimAt = now;
+    this.opts.onAim(aim.c, aim.x, aim.y);
+  }
+
+  private holo: {
+    group: THREE.Group;
+    model: THREE.Group | null;
+    ring: THREE.Mesh;
+    fill: THREE.Mesh;
+    beam: THREE.Mesh;
+    label: HTMLElement;
+    card: CardId | null;
+    target: THREE.Vector3;
+    fade: number;
+  } | null = null;
+
+  private holoMat = new THREE.MeshBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.6, depthWrite: false });
+
+  private ensureHolo() {
+    if (this.holo) return this.holo;
+    const group = new THREE.Group();
+    const flat = (geo: THREE.BufferGeometry, opacity: number) => {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x6fe3ff, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+      m.rotation.x = -Math.PI / 2;
+      return m;
+    };
+    const fill = flat(new THREE.CircleGeometry(1, 40), 0.2);
+    fill.position.y = 0.05;
+    const ring = flat(new THREE.RingGeometry(0.9, 1, 48), 0.85);
+    ring.position.y = 0.07;
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(1, 1, 3.2, 32, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x6fe3ff, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+    );
+    beam.position.y = 1.6;
+    group.add(fill, ring, beam);
+    group.visible = false;
+    this.scene.add(group);
+    const label = document.createElement("div");
+    label.className = "holo-tag";
+    label.style.display = "none";
+    this.opts.overlay.appendChild(label);
+    this.holo = { group, model: null, ring, fill, beam, label, card: null, target: new THREE.Vector3(), fade: 0 };
+    return this.holo;
+  }
+
+  private setAllyAim(aim: AimSnap | null, name: string) {
+    if (!aim && !this.holo) return;
+    const h = this.ensureHolo();
+    if (!aim) {
+      h.card = null;
+      return;
+    }
+    const card = CARDS[aim.c];
+    if (h.card !== aim.c || !h.group.visible) {
+      if (h.model) h.group.remove(h.model);
+      h.model = null;
+      if (card.unit) {
+        const m = createUnitModel(card, ALLY);
+        m.root.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = this.holoMat;
+        });
+        Object.assign(m.head.material, { opacity: 0.7, transparent: true });
+        m.root.rotation.y = this.opts.team === 0 ? Math.PI : 0;
+        h.model = m.root;
+        h.group.add(m.root);
+      }
+      const r =
+        card.kind === "spell" ? card.spell!.radius : card.count > 1 ? card.spawnRadius + card.unit!.radius : Math.max(0.7, card.unit!.radius * 1.3);
+      for (const o of [h.ring, h.fill]) o.scale.setScalar(r);
+      h.beam.scale.set(r, 1, r);
+      h.label.textContent = `${name} · ${card.name}`;
+      if (!h.group.visible) h.group.position.copy(toWorld(aim.x, aim.y));
+    }
+    h.card = aim.c;
+    h.target.copy(toWorld(aim.x, aim.y));
+  }
+
+  private updateHolo(dt: number) {
+    const h = this.holo;
+    if (!h) return;
+    h.fade = Math.max(0, Math.min(1, h.fade + (h.card ? dt * 6 : -dt * 5)));
+    h.group.visible = h.fade > 0;
+    h.label.style.display = h.group.visible ? "" : "none";
+    if (!h.group.visible) return;
+    h.group.position.lerp(h.target, Math.min(1, dt * 14));
+    const flicker = 0.85 + Math.sin(this.time * 31) * 0.05 + Math.sin(this.time * 7.3) * 0.1;
+    this.holoMat.opacity = 0.6 * h.fade * flicker;
+    (h.ring.material as THREE.MeshBasicMaterial).opacity = 0.85 * h.fade;
+    (h.fill.material as THREE.MeshBasicMaterial).opacity = (0.12 + Math.sin(this.time * 4) * 0.05) * h.fade;
+    (h.beam.material as THREE.MeshBasicMaterial).opacity = 0.14 * h.fade;
+    h.ring.rotation.z += dt * 1.2;
+    if (h.model) h.model.position.y = 0.15 + Math.sin(this.time * 3) * 0.08;
+    tmpV.copy(h.group.position).setY(h.model ? 3.4 : 2.2).project(this.camera);
+    const w = this.renderer.domElement.clientWidth;
+    const hh = this.renderer.domElement.clientHeight;
+    h.label.style.left = `${((tmpV.x + 1) / 2) * w}px`;
+    h.label.style.top = `${((1 - tmpV.y) / 2) * hh}px`;
+    h.label.style.opacity = String(h.fade);
   }
 
   private showZones(card: CardDef) {
@@ -1033,6 +1165,8 @@ export class GameView {
     this.resizeObs.disconnect();
     this.fx.clear();
     for (const f of this.floaters) f.el.remove();
+    this.holo?.label.remove();
+    if (this.aimSent) this.opts.onAim?.(null, 0, 0);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

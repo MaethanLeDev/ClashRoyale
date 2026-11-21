@@ -192,7 +192,7 @@ export class Room {
     const waiting = this.humans.filter((s) => s.id !== this.hostId && !s.ready).map((s) => s.name);
     if (waiting.length) return `En attente de : ${waiting.join(", ")}`;
     while (this.freeTeam() !== null) this.addBot();
-    const sim = new Sim();
+    const sim = new Sim(this.mode);
     if (process.env.DEV_MATCH_SECONDS) sim.timeLeft = Number(process.env.DEV_MATCH_SECONDS);
     this.sim = sim;
     this.bots = [];
@@ -220,6 +220,11 @@ export class Room {
     if (!this.sim) return "Pas de partie";
     if (!Number.isFinite(x) || !Number.isFinite(y)) return "Position invalide";
     return this.sim.play(c.id, card, x, y);
+  }
+
+  aim(c: Client, card: CardId | null, x: number, y: number) {
+    if (!this.sim || this.mode !== "2v2") return;
+    this.sim.setAim(c.id, card, x, y);
   }
 
   emote(c: Client, emote: string) {

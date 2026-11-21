@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ARENA_H, ARENA_W, BRIDGES_X, RIVER_Y, TOWER_LAYOUT } from "../../../shared/constants";
+import { ARENA_H, ARENA_W, BRIDGES_X, RIVER_Y, towerLayout } from "../../../shared/constants";
 import { fieldTexture, glowTexture, mulberry, noiseTexture, textTexture, windowsTexture } from "./textures";
 import type { Theme } from "./themes";
 
@@ -82,7 +82,7 @@ function inBuildingSlot(x: number, z: number): boolean {
   return Math.abs(x) > 13 && Math.abs(x) < 27 && Math.abs(z) > 3.5 && Math.abs(z) < 15;
 }
 
-export function buildArena(theme: Theme): Arena {
+export function buildArena(theme: Theme, mode: "1v1" | "2v2" = "1v1"): Arena {
   const group = new THREE.Group();
   const animated: ((t: number, dt: number) => void)[] = [];
   const rnd = mulberry(42);
@@ -99,7 +99,7 @@ export function buildArena(theme: Theme): Arena {
   const drawPaths = (yMin: number, yMax: number) => (g: CanvasRenderingContext2D, px: number) => {
     const own = yMin < RIVER_Y;
     const ty = (y: number) => (own ? y : ARENA_H - y);
-    for (const def of TOWER_LAYOUT) {
+    for (const def of towerLayout(mode)) {
       const [cx, cy] = toPx(def.x, ty(def.y), yMax, px);
       g.fillStyle = theme.pads;
       g.beginPath();

@@ -160,10 +160,13 @@ export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array): 
   const towerOrder = (team: Team) =>
     sim.towers.filter((t) => t.team === team).sort((a, b) => (a.kind === b.kind ? a.x - b.x : a.kind === "king" ? 1 : -1));
   for (const team of [c.team, c.enemy]) {
+    // Toujours 3 valeurs par équipe (2 princesses + roi), même en 2v2 où il y a deux rois :
+    // on garde alors le plus abîmé, puisque la chute d'un seul suffit à perdre.
     const ts = towerOrder(team);
-    for (const t of ts) out[o++] = t.alive ? t.hp / t.maxHp : 0;
-    const king = ts.find((t) => t.kind === "king");
-    out[o++] = king && king.active ? 1 : 0;
+    for (const t of ts) if (t.kind === "princess") out[o++] = t.alive ? t.hp / t.maxHp : 0;
+    const kings = ts.filter((t) => t.kind === "king");
+    out[o++] = kings.length ? Math.min(...kings.map((k) => (k.alive ? k.hp / k.maxHp : 0))) : 0;
+    out[o++] = kings.some((k) => k.active) ? 1 : 0;
   }
   const enemyPlayers = [...sim.players.values()].filter((q) => q.team !== c.team);
   const enemyElixir = enemyPlayers.reduce((s, q) => s + q.elixir, 0) / Math.max(1, enemyPlayers.length);

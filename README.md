@@ -115,6 +115,12 @@ La partie se joue dans l'arène du joueur humain le mieux classé.
 
 Les bots des arènes 2 à 5 sont des réseaux de neurones entraînés en simulation, chacun avec un style : rush, défense, préshot, et le Boss. Voir [training/README.md](training/README.md) pour lancer une nuit d'entraînement (`caffeinate -i npm run train:night` sur Mac).
 
+## 2v2
+
+- Chaque joueur a sa tour du roi ; les deux sont imbriquées au centre et ont chacune deux fois plus de vie qu'en 1v1. Leur sort est lié : si l'une tombe, l'autre s'effondre avec elle et l'équipe perd. Elles se réveillent ensemble dès que l'une est touchée ou qu'une tour d'angle tombe. Les cartes lancées (Midas, Nazar) partent de la tour du roi de leur joueur.
+- Au-dessus de ses propres cartes, on voit la caféine de son allié et ses 4 cartes en main (grisées s'il ne peut pas les payer).
+- Quand un allié humain tient une carte au-dessus de l'arène, un hologramme bleu de la troupe apparaît à l'endroit visé, avec son nom, et suit sa main en direct. Les bots alliés n'en affichent pas : ils jouent sans « viser ».
+
 ## Fin de partie
 
 Si les couronnes sont à égalité après les prolongations, toutes les tours perdent des PV de plus en plus vite : la première qui tombe désigne le perdant.

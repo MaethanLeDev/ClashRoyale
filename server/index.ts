@@ -249,6 +249,9 @@ wss.on("connection", (ws: WebSocket, req) => {
       case "play":
         if (room && msg.card in CARDS) fail(room.play(client, msg.card, Number(msg.x), Number(msg.y)));
         break;
+      case "aim":
+        if (room) room.aim(client, msg.card && msg.card in CARDS ? msg.card : null, Number(msg.x), Number(msg.y));
+        break;
       case "emote":
         if (room) room.emote(client, String(msg.emote));
         break;

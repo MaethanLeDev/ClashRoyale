@@ -1,6 +1,6 @@
 import { CARDS, type CardId } from "../../shared/cards";
 import { MAX_ELIXIR, RESOURCE_NAME } from "../../shared/constants";
-import type { PlayerSnap, StateMsg, Team } from "../../shared/protocol";
+import type { AllySnap, PlayerSnap, StateMsg, Team } from "../../shared/protocol";
 import { cardEl, crownSvg, h, toast } from "./ui";
 import { getTilt, onTilt, setTilt } from "./settings";
 import { icon } from "./icons";
@@ -44,6 +44,7 @@ export class Hud {
   private elixir = 0;
   private selected: CardId | null = null;
   private ended = false;
+  private ally: { root: HTMLElement; fill: HTMLElement; num: HTMLElement; cards: HTMLElement[]; ids: (CardId | null)[] } | null = null;
 
   constructor(parent: HTMLElement, private opts: HudOptions) {
     this.overlay = h("div", { class: "hud", style: { pointerEvents: "none" } });
@@ -87,9 +88,28 @@ export class Hud {
     const ticks = h("div", { class: "ticks" }, ...Array.from({ length: 10 }, () => h("span")));
     const emoteBtn = h("button", { class: "emote-btn", title: "Émotes", onclick: () => this.toggleEmotes() }, "💬");
     const settingsBtn = h("button", { class: "emote-btn settings-btn", title: "Caméra", onclick: () => this.toggleSettings() }, icon("camera"));
+    const mate = opts.players.find((p) => p.tm === opts.team && p.id !== opts.myId);
+    if (mate) {
+      const fill = h("div", { class: "ally-fill" });
+      const num = h("b", {}, "0");
+      const cards = Array.from({ length: 4 }, () => h("div", { class: "ally-card" }));
+      const root = h(
+        "div",
+        { class: "ally-strip", title: `Main de ${mate.name}` },
+        h(
+          "div",
+          { class: "ally-info" },
+          h("div", { class: "ally-name" }, h("i"), mate.name),
+          h("div", { class: "ally-el" }, h("div", { class: "ally-bar" }, fill), num),
+        ),
+        h("div", { class: "ally-hand" }, ...cards),
+      );
+      this.ally = { root, fill, num, cards, ids: [null, null, null, null] };
+    }
     this.bottom = h(
       "div",
       { class: "hud-bottom" },
+      this.ally?.root,
       emoteBtn,
       settingsBtn,
       handRow,
@@ -204,6 +224,7 @@ export class Hud {
       this.nextWrap.querySelector(".card")?.remove();
       if (s.next) this.nextWrap.appendChild(cardEl(s.next, { showName: false }));
     }
+    if (s.ally) this.updateAlly(s.ally);
     this.elixir = s.el;
     this.fill.style.width = `${(Math.min(MAX_ELIXIR, s.el) / MAX_ELIXIR) * 100}%`;
     this.dropNum.textContent = String(Math.floor(s.el));
@@ -241,6 +262,27 @@ export class Hud {
     this.timerLbl.textContent = s.phase === "tiebreak" ? "Départage" : s.phase === "overtime" ? "Prolongations" : "Temps";
     this.timerEl.classList.toggle("urgent", s.phase !== "countdown" && left <= 30);
     this.dbl.style.display = s.dbl ? "" : "none";
+  }
+
+  private updateAlly(a: AllySnap) {
+    const v = this.ally;
+    if (!v) return;
+    v.fill.style.width = `${(Math.min(MAX_ELIXIR, a.el) / MAX_ELIXIR) * 100}%`;
+    v.num.textContent = String(Math.floor(a.el));
+    for (let i = 0; i < 4; i++) {
+      const id = a.hand[i] ?? null;
+      const el = v.cards[i];
+      if (id !== v.ids[i]) {
+        v.ids[i] = id;
+        el.replaceChildren(...(id ? [cardEl(id, { showName: false })] : []));
+        el.classList.remove("swap");
+        void el.offsetWidth;
+        el.classList.add("swap");
+      }
+      const c = id ? CARDS[id] : null;
+      el.classList.toggle("disabled", !!c && a.el < c.cost);
+      el.classList.toggle("aiming", !!id && a.aim?.c === id);
+    }
   }
 
   showEnd(winner: Team | -1, crowns: [number, number], trophies?: { delta: number; total: number }) {

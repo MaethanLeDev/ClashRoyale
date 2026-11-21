@@ -1,10 +1,10 @@
 import { CARDS, type CardDef, type CardId, type UnitStats } from "./cards";
 import {
   ARENA_H, ARENA_W, BRIDGES_X, BRIDGE_HALF, COUNTDOWN, DEPLOY_TIME, DOUBLE_TIME_AT, ELIXIR_PER_SEC,
-  HAND_SIZE, MATCH_TIME, MAX_ELIXIR, OVERTIME, RIVER_HALF, RIVER_Y, START_ELIXIR, TOWER_LAYOUT,
+  HAND_SIZE, MATCH_TIME, MAX_ELIXIR, OVERTIME, RIVER_HALF, RIVER_Y, START_ELIXIR, towerLayout,
   type TowerDef, type TowerKind,
 } from "./constants";
-import type { GameEvent, Phase, ProjSnap, StateMsg, Team, TowerSnap, UnitSnap } from "./protocol";
+import type { AimSnap, AllySnap, GameEvent, Mode, Phase, ProjSnap, StateMsg, Team, TowerSnap, UnitSnap } from "./protocol";
 import { UNIT_STATE } from "./protocol";
 import { canDeployAt } from "./rules";
 
@@ -16,6 +16,10 @@ export interface SimPlayer {
   elixir: number;
   hand: CardId[];
   queue: CardId[];
+  /** Tour du roi du joueur (en 2v2, chacun a la sienne). */
+  king: number;
+  /** Carte tenue au-dessus de l'arène, relayée à l'allié. */
+  aim: (AimSnap & { t: number }) | null;
 }
 
 interface Body {
@@ -119,9 +123,9 @@ export class Sim {
   events: GameEvent[] = [];
   private nextId = 1;
 
-  constructor() {
+  constructor(readonly mode: Mode = "1v1") {
     for (const team of [0, 1] as Team[]) {
-      for (const def of TOWER_LAYOUT) {
+      for (const def of towerLayout(mode)) {
         const y = team === 0 ? def.y : ARENA_H - def.y;
         this.towers.push({
           id: this.nextId++, team, x: def.x, y, radius: def.radius, hp: def.hp, maxHp: def.hp,
@@ -133,9 +137,13 @@ export class Sim {
 
   addPlayer(id: string, name: string, team: Team, deck: CardId[], bot = false): SimPlayer {
     const order = shuffle(deck);
+    // Premier joueur de l'équipe : tour du roi de gauche, le second : celle de droite
+    const kings = this.towers.filter((t) => t.team === team && t.kind === "king").sort((a, b) => a.x - b.x);
+    const taken = new Set([...this.players.values()].filter((q) => q.team === team).map((q) => q.king));
+    const king = (kings.find((k) => !taken.has(k.id)) ?? kings[0]).id;
     const p: SimPlayer = {
       id, name, team, bot, elixir: START_ELIXIR,
-      hand: order.slice(0, HAND_SIZE), queue: order.slice(HAND_SIZE),
+      hand: order.slice(0, HAND_SIZE), queue: order.slice(HAND_SIZE), king, aim: null,
     };
     this.players.set(id, p);
     return p;
@@ -147,6 +155,22 @@ export class Sim {
 
   emit(ev: GameEvent) {
     this.events.push(ev);
+  }
+
+  /** Active toutes les tours du roi d'une équipe (en 2v2 elles se réveillent ensemble). */
+  private wakeKings(team: Team) {
+    for (const t of this.towers) if (t.team === team && t.kind === "king") t.active = true;
+  }
+
+  /** Mémorise la carte qu'un joueur tient au-dessus de l'arène (null = plus rien). */
+  setAim(playerId: string, card: CardId | null, x = 0, y = 0) {
+    const p = this.players.get(playerId);
+    if (!p) return;
+    if (!card || !p.hand.includes(card) || !Number.isFinite(x) || !Number.isFinite(y)) {
+      p.aim = null;
+      return;
+    }
+    p.aim = { c: card, x: r2(Math.min(ARENA_W, Math.max(0, x))), y: r2(Math.min(ARENA_H, Math.max(0, y))), t: this.time };
   }
 
   towerFor(team: Team, kind: TowerKind, x?: number): Tower | undefined {
@@ -169,6 +193,7 @@ export class Sim {
     if (!this.canDeploy(p.team, card, x, y)) return "Placement interdit";
 
     p.elixir -= card.cost;
+    p.aim = null;
     const nextCard = p.queue.shift();
     p.queue.push(cardId);
     if (nextCard) p.hand[idx] = nextCard;
@@ -184,7 +209,7 @@ export class Sim {
       return;
     }
     if (card.delivery) {
-      const king = this.towerFor(p.team, "king")!;
+      const king = this.towers.find((t) => t.id === p.king && t.alive) ?? this.towerFor(p.team, "king")!;
       const dig = card.delivery === "dig";
       const dist = Math.hypot(x - king.x, y - king.y);
       const sy = dig ? king.y + (p.team === 0 ? king.radius : -king.radius) : king.y;
@@ -242,7 +267,7 @@ export class Sim {
     if (amount <= 0) return;
     target.hp -= amount;
     this.emit({ e: "hit", id: target.id, x: r2(target.x), y: r2(target.y), dmg: Math.round(amount), k: kind });
-    if ("kind" in target && target.kind === "king") target.active = true;
+    if ("kind" in target && target.kind === "king") this.wakeKings(target.team);
   }
 
   clearEvents() {
@@ -700,13 +725,20 @@ export class Sim {
       this.emit({ e: "tower", id: t.id, tm: t.team, x: t.x, y: t.y, k: t.kind });
       if (t.kind === "king") {
         this.crowns[enemy] = 3;
-        for (const o of this.towers) if (o.team === t.team) o.alive = false;
+        for (const o of this.towers) {
+          if (o.team !== t.team) continue;
+          // 2v2 : la tour du roi jumelle s'effondre avec elle
+          if (o !== t && o.kind === "king" && o.alive && o.hp > 0) {
+            o.hp = 0;
+            this.emit({ e: "tower", id: o.id, tm: o.team, x: o.x, y: o.y, k: o.kind });
+          }
+          o.alive = false;
+        }
         this.finish(enemy);
         return;
       }
       this.crowns[enemy] += 1;
-      const king = this.towerFor(t.team, "king");
-      if (king) king.active = true;
+      this.wakeKings(t.team);
       if (this.overtime) {
         this.finish(enemy);
         return;
@@ -807,12 +839,23 @@ export class Sim {
   snapshotFor(playerId: string | null, base?: Omit<StateMsg, "hand" | "next" | "el">): StateMsg {
     const b = base ?? this.baseSnapshot();
     const p = playerId ? this.players.get(playerId) : undefined;
-    return {
+    const msg: StateMsg = {
       ...b,
       hand: p ? p.hand.slice() : [],
       next: p ? p.queue[0] ?? null : null,
       el: p ? Math.round(p.elixir * 100) / 100 : 0,
     };
+    const ally = p ? this.allyOf(p) : undefined;
+    if (ally) msg.ally = ally;
+    return msg;
+  }
+
+  private allyOf(p: SimPlayer): AllySnap | undefined {
+    const a = [...this.players.values()].find((q) => q.team === p.team && q.id !== p.id);
+    if (!a) return undefined;
+    // Une visée trop ancienne (déconnexion, onglet en arrière-plan) disparaît d'elle-même
+    const aim = a.aim && this.time - a.aim.t < 1.5 ? { c: a.aim.c, x: a.aim.x, y: a.aim.y } : null;
+    return { id: a.id, name: a.name, bot: a.bot, el: Math.round(a.elixir * 10) / 10, hand: a.hand.slice(), aim };
   }
 
   baseSnapshot(): Omit<StateMsg, "hand" | "next" | "el"> {

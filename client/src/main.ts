@@ -2,7 +2,7 @@ import "./style.css";
 import "./menu.css";
 import { DECK_SIZE } from "../../shared/cards";
 import { GAME_NAME } from "../../shared/constants";
-import type { PlayerSnap, ServerMsg, Team } from "../../shared/protocol";
+import type { Mode, PlayerSnap, ServerMsg, Team } from "../../shared/protocol";
 import { GameView } from "./game/view";
 import { loadHeads } from "./game/textures";
 import { loadModels } from "./game/glb";
@@ -28,7 +28,7 @@ function updateConn() {
 
 // ---------- Partie ----------
 
-function startGame(team: Team, players: PlayerSnap[], arena: number) {
+function startGame(team: Team, players: PlayerSnap[], arena: number, mode: Mode) {
   stopGame();
   closeAllSheets();
   app.inGame = true;
@@ -55,6 +55,11 @@ function startGame(team: Team, players: PlayerSnap[], arena: number) {
     overlay: hud.overlay,
     team,
     arena,
+    mode,
+    // L'hologramme n'a d'intérêt que pour un allié humain
+    onAim: mode === "2v2" && players.some((p) => p.tm === team && p.id !== app.myId && !p.bot)
+      ? (card, x, y) => net.send(card ? { type: "aim", card, x, y } : { type: "aim", card: null })
+      : undefined,
     getInsets: () => ({ top: hud.topHeight(), bottom: hud.bottomHeight() }),
     onPlay: (card, x, y) => net.send({ type: "play", card, x, y }),
     onSelect: (card, dragging) => hud.setSelected(card, dragging),
@@ -107,7 +112,7 @@ net.on((msg: ServerMsg) => {
       break;
     case "start":
       menu?.setPlayBusy(true);
-      assets.then(() => startGame(msg.team, msg.players, msg.arena ?? 0));
+      assets.then(() => startGame(msg.team, msg.players, msg.arena ?? 0, msg.mode));
       break;
     case "state":
       if (game) {
