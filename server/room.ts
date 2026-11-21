@@ -14,6 +14,7 @@ export interface Client {
   deck: CardId[];
   roomId: string | null;
   identity: Identity;
+  spectating: string | null;
   send(msg: ServerMsg): void;
 }
 
@@ -35,6 +36,9 @@ export class Room {
   slots: Slot[] = [];
   sim: Sim | null = null;
   bots: BotLike[] = [];
+  spectators = new Set<Client>();
+  private match: { players: { id: string; name: string; tm: Team; bot: boolean }[]; arena: number } | null = null;
+  private lastSpectatorEmote = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
   private botCounter = 0;
   /** Partie contre les bots lancée depuis « Jouer » : n'apparaît pas dans les combats amicaux. */
@@ -62,7 +66,7 @@ export class Room {
   info(): RoomInfo {
     const arena = arenaFor(this.topTrophies()).id;
     return {
-      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena, solo: this.solo,
+      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena, solo: this.solo, spectators: this.spectators.size,
       botStyle: brainSummary(arena),
       players: this.slots.map(({ id, name, team, bot, ready, account }) => ({ id, name, team, bot, ready, account })),
     };
@@ -70,6 +74,36 @@ export class Room {
 
   broadcast(msg: ServerMsg) {
     for (const s of this.slots) s.client?.send(msg);
+  }
+
+  broadcastAll(msg: ServerMsg) {
+    this.broadcast(msg);
+    for (const c of this.spectators) c.send(msg);
+  }
+
+  addSpectator(c: Client): string | null {
+    if (this.status !== "playing" || !this.match) return "Cette partie n'est plus en cours";
+    if (this.spectators.size >= 40) return "Trop de spectateurs sur cette partie";
+    this.spectators.add(c);
+    c.spectating = this.id;
+    c.send({ type: "start", team: 0, mode: this.mode, players: this.match.players, you: c.id, arena: this.match.arena, spectator: true });
+    this.changed();
+    return null;
+  }
+
+  removeSpectator(c: Client) {
+    if (!this.spectators.delete(c)) return;
+    c.spectating = null;
+    this.lastSpectatorEmote.delete(c.id);
+    this.changed();
+  }
+
+  spectatorEmote(c: Client, emote: string) {
+    if (!this.spectators.has(c) || !this.sim || !emoteById(emote)) return;
+    const now = Date.now();
+    if (now - (this.lastSpectatorEmote.get(c.id) ?? 0) < 1500) return;
+    this.lastSpectatorEmote.set(c.id, now);
+    this.broadcastAll({ type: "emote", from: c.id, name: c.name, tm: 0, emote, spectator: true });
   }
 
   private teamCount(team: Team): number {
@@ -208,6 +242,7 @@ export class Room {
     }
     this.status = "playing";
     const players = this.slots.map((s) => ({ id: s.id, name: s.name, tm: s.team, bot: s.bot }));
+    this.match = { players, arena };
     for (const s of this.slots) {
       s.client?.send({ type: "start", team: s.team, mode: this.mode, players, you: s.id, arena });
     }
@@ -231,7 +266,7 @@ export class Room {
     const slot = this.slots.find((s) => s.id === c.id);
     if (!slot || !this.sim) return;
     if (!emoteById(emote)) return;
-    this.broadcast({ type: "emote", from: c.id, name: slot.name, tm: slot.team, emote });
+    this.broadcastAll({ type: "emote", from: c.id, name: slot.name, tm: slot.team, emote });
   }
 
   private tick() {
@@ -239,10 +274,14 @@ export class Room {
     if (!sim) return;
     sim.step(DT);
     for (const b of this.bots) b.update(DT);
-    const base = sim.baseSnapshot();
+    const base = { ...sim.baseSnapshot(), spec: this.spectators.size };
     sim.clearEvents();
     for (const s of this.slots) {
       if (s.client) s.client.send(sim.snapshotFor(s.id, base));
+    }
+    if (this.spectators.size) {
+      const view = sim.snapshotFor(null, base);
+      for (const c of this.spectators) c.send(view);
     }
     if (sim.phase === "ended") {
       const winner = sim.winner ?? -1;
@@ -254,6 +293,11 @@ export class Room {
         s.client.send({ type: "end", winner, crowns: sim.crowns, trophies: { delta, total: profile.trophies } });
         s.client.send({ type: "profile", trophies: profile.trophies, best: profile.best, wins: profile.wins, losses: profile.losses });
       }
+      for (const c of this.spectators) {
+        c.send({ type: "end", winner, crowns: sim.crowns });
+        c.spectating = null;
+      }
+      this.spectators.clear();
       this.stop();
       this.slots = this.slots.filter((s) => !s.bot || s.id.startsWith("bot-"));
       for (const s of this.slots) if (!s.bot) s.ready = false;
@@ -262,6 +306,12 @@ export class Room {
   }
 
   stop() {
+    for (const c of this.spectators) {
+      c.spectating = null;
+      c.send({ type: "spectateEnd" });
+    }
+    this.spectators.clear();
+    this.match = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.status = "lobby";

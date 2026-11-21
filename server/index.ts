@@ -71,11 +71,18 @@ function roomCode(): string {
 }
 
 function publishRooms() {
-  const list = [...rooms.values()].filter((r) => r.humans.length > 0 && !r.solo).map((r) => r.info());
+  const list = [...rooms.values()].filter((r) => r.humans.length > 0 && (!r.solo || r.status === "playing")).map((r) => r.info());
   for (const c of clients.values()) if (!c.roomId) c.send({ type: "rooms", rooms: list });
 }
 
+function stopSpectating(c: Client) {
+  if (!c.spectating) return;
+  rooms.get(c.spectating)?.removeSpectator(c);
+  c.spectating = null;
+}
+
 function leaveRoom(c: Client) {
+  stopSpectating(c);
   if (!c.roomId) return;
   const room = rooms.get(c.roomId);
   room?.removeClient(c);
@@ -106,7 +113,7 @@ wss.on("connection", (ws: WebSocket, req) => {
   const budget = new MessageBudget();
   const id = `p${++counter}-${Math.random().toString(36).slice(2, 7)}`;
   const client: Client = {
-    id, name: "Joueur", deck: sanitizeDeck(null), roomId: null, identity: { kind: "guest", name: "Joueur" },
+    id, name: "Joueur", deck: sanitizeDeck(null), roomId: null, spectating: null, identity: { kind: "guest", name: "Joueur" },
     send(msg: ServerMsg) {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
     },
@@ -254,6 +261,19 @@ wss.on("connection", (ws: WebSocket, req) => {
         break;
       case "emote":
         if (room) room.emote(client, String(msg.emote));
+        else if (client.spectating) rooms.get(client.spectating)?.spectatorEmote(client, String(msg.emote));
+        break;
+      case "spectate": {
+        const target = rooms.get(String(msg.roomId).toUpperCase());
+        if (!target) return fail("Partie introuvable");
+        leaveRoom(client);
+        fail(target.addSpectator(client));
+        publishRooms();
+        break;
+      }
+      case "stopSpectating":
+        stopSpectating(client);
+        publishRooms();
         break;
     }
   });

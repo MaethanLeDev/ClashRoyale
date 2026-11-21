@@ -13,6 +13,8 @@ export interface HudOptions {
   onEmote(emote: string): void;
   onBack(): void;
   backLabel?: string;
+  spectator?: boolean;
+  onSwitchSide?(): void;
 }
 
 import { EMOTES } from "../../shared/emotes";
@@ -45,6 +47,8 @@ export class Hud {
   private selected: CardId | null = null;
   private ended = false;
   private ally: { root: HTMLElement; fill: HTMLElement; num: HTMLElement; cards: HTMLElement[]; ids: (CardId | null)[] } | null = null;
+  private specBadge: HTMLDivElement;
+  private crowd: HTMLDivElement;
 
   constructor(parent: HTMLElement, private opts: HudOptions) {
     this.overlay = h("div", { class: "hud", style: { pointerEvents: "none" } });
@@ -60,6 +64,9 @@ export class Hud {
       this.timerEl,
       h("div", { class: "crowns enemy" }, this.enemyCrowns, crownSvg("#ffd84a")),
     );
+    this.specBadge = h("div", { class: "spec-badge" });
+    this.specBadge.style.display = "none";
+    this.crowd = h("div", { class: "crowd" });
     this.dbl = h("div", { class: "dbl-badge" }, `${RESOURCE_NAME} x2`);
     this.dbl.style.display = "none";
 
@@ -106,21 +113,45 @@ export class Hud {
       );
       this.ally = { root, fill, num, cards, ids: [null, null, null, null] };
     }
-    this.bottom = h(
-      "div",
-      { class: "hud-bottom" },
-      this.ally?.root,
-      emoteBtn,
-      settingsBtn,
-      handRow,
-      h("div", { class: "elixir" }, this.dropNum, h("div", { class: "bar" }, this.fill, ticks, h("div", { class: "rname" }, RESOURCE_NAME))),
-    );
+    this.bottom = opts.spectator
+      ? h(
+          "div",
+          { class: "hud-bottom spectator-bar" },
+          emoteBtn,
+          settingsBtn,
+          h("div", { class: "spec-title" }, icon("eye"), "Mode spectateur"),
+          h(
+            "div",
+            { class: "spec-teams" },
+            h("span", { class: "t-ally" }, allies.map((p) => p.name).join(" & ")),
+            h("span", { class: "vs-small" }, "VS"),
+            h("span", { class: "t-enemy" }, enemies.map((p) => p.name).join(" & ")),
+          ),
+          h(
+            "div",
+            { class: "row" },
+            h("button", { class: "btn small ghost", onclick: () => opts.onSwitchSide?.() }, icon("swap"), "Changer de côté"),
+            h("button", { class: "btn small gold", onclick: () => this.toggleEmotes() }, icon("chat"), "Encourager"),
+            h("button", { class: "btn small red", onclick: () => opts.onBack() }, "Quitter"),
+          ),
+        )
+      : h(
+          "div",
+          { class: "hud-bottom" },
+          this.ally?.root,
+          emoteBtn,
+          settingsBtn,
+          handRow,
+          h("div", { class: "elixir" }, this.dropNum, h("div", { class: "bar" }, this.fill, ticks, h("div", { class: "rname" }, RESOURCE_NAME))),
+        );
 
     this.root = h(
       "div",
       { class: "hud" },
       this.overlay,
+      this.crowd,
       top,
+      this.specBadge,
       this.dbl,
       names(allies, "t-ally", "left"),
       names(enemies, "t-enemy", "right"),
@@ -197,7 +228,25 @@ export class Hud {
     toast(this.root, msg);
   }
 
+  crowdEmote(name: string, emoteId: string) {
+    const def = EMOTES.find((e) => e.id === emoteId);
+    if (!def) return;
+    const left = Math.random() < 0.5;
+    const el = h("div", { class: `crowd-emote ${left ? "left" : "right"}` }, emoteEl(def, true), h("small", {}, name));
+    el.style.top = `${22 + Math.random() * 40}%`;
+    this.crowd.appendChild(el);
+    setTimeout(() => el.remove(), 3200);
+  }
+
   update(s: StateMsg) {
+    const spec = s.spec ?? 0;
+    this.specBadge.style.display = spec > 0 ? "" : "none";
+    this.specBadge.replaceChildren(icon("eye"), `${spec} spectateur${spec > 1 ? "s" : ""}`);
+    if (!this.opts.spectator) this.updateHand(s);
+    this.updateBoard(s);
+  }
+
+  private updateHand(s: StateMsg) {
     for (let i = 0; i < 4; i++) {
       const card = s.hand[i] ?? null;
       if (card !== this.slotCards[i]) {
@@ -228,7 +277,9 @@ export class Hud {
     this.elixir = s.el;
     this.fill.style.width = `${(Math.min(MAX_ELIXIR, s.el) / MAX_ELIXIR) * 100}%`;
     this.dropNum.textContent = String(Math.floor(s.el));
+  }
 
+  private updateBoard(s: StateMsg) {
     const me = this.opts.team;
     this.allyCrowns.textContent = String(s.crowns[me]);
     this.enemyCrowns.textContent = String(s.crowns[me === 0 ? 1 : 0]);
@@ -292,8 +343,11 @@ export class Hud {
     this.settingsPanel?.remove();
     const me = this.opts.team;
     const them = me === 0 ? 1 : 0;
-    const res = winner === -1 ? "draw" : winner === me ? "win" : "lose";
-    const title = res === "win" ? "Victoire !" : res === "lose" ? "Défaite…" : "Égalité";
+    const res = winner === -1 ? "draw" : this.opts.spectator ? "win" : winner === me ? "win" : "lose";
+    const winners = this.opts.players.filter((p) => p.tm === winner).map((p) => p.name).join(" & ");
+    const title = this.opts.spectator
+      ? winner === -1 ? "Égalité" : `Victoire de ${winners} !`
+      : res === "win" ? "Victoire !" : res === "lose" ? "Défaite…" : "Égalité";
     let delay = 0.5;
     const side = (n: number, color: string) =>
       h(
@@ -309,11 +363,19 @@ export class Hud {
           return s;
         }),
       );
-    const letters = h("div", { class: `end-title ${res}` }, ...[...title].map((ch, i) => {
-      const span = h("span", { class: "letter" }, ch === " " ? "\u00a0" : ch);
-      span.style.animationDelay = `${i * 0.05}s`;
-      return span;
-    }));
+    let li = 0;
+    const words: (HTMLElement | string)[] = [];
+    title.split(" ").forEach((word, wi) => {
+      if (wi > 0) words.push(" ");
+      words.push(
+        h("span", { class: "word" }, ...[...word].map((ch) => {
+          const span = h("span", { class: "letter" }, ch);
+          span.style.animationDelay = `${li++ * 0.05}s`;
+          return span;
+        })),
+      );
+    });
+    const letters = h("div", { class: `end-title ${res}${this.opts.spectator ? " spectator" : ""}` }, ...words);
     const mine = side(crowns[me], "#5aa8ff");
     const theirs = side(crowns[them], "#ff6b6b");
     const count = h("span", {}, trophies ? String(trophies.total - trophies.delta) : "");
@@ -325,7 +387,7 @@ export class Hud {
           h("small", {}, count, " trophées"),
         )
       : null;
-    const btn = h("button", { class: "btn gold big end-btn", onclick: () => this.opts.onBack() }, this.opts.backLabel ?? "Retour au salon");
+    const btn = h("button", { class: "btn gold big end-btn", onclick: () => this.opts.onBack() }, this.opts.spectator ? "Retour à l'accueil" : this.opts.backLabel ?? "Retour au salon");
     const card = h(
       "div",
       { class: "end-card" },

@@ -93,6 +93,7 @@ export interface StateMsg {
   ally?: AllySnap;
   ev: GameEvent[];
   winner: Team | -1 | null;
+  spec?: number;
 }
 
 export interface RoomPlayer {
@@ -111,6 +112,7 @@ export interface RoomInfo {
   status: "lobby" | "playing";
   arena: number;
   solo: boolean;
+  spectators: number;
   botStyle: { label: string; description: string } | null;
   players: RoomPlayer[];
 }
@@ -131,6 +133,8 @@ export type ClientMsg =
   | { type: "aim"; card: CardId | null; x?: number; y?: number }
   | { type: "emote"; emote: string }
   | { type: "ready"; ready: boolean }
+  | { type: "spectate"; roomId: string }
+  | { type: "stopSpectating" }
   | { type: "register"; name: string; password: string }
   | { type: "login"; name: string; password: string }
   | { type: "resume"; token: string }
@@ -140,11 +144,12 @@ export type ServerMsg =
   | { type: "welcome"; id: string }
   | { type: "rooms"; rooms: RoomInfo[] }
   | { type: "room"; room: RoomInfo | null }
-  | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string; arena: number }
+  | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string; arena: number; spectator?: boolean }
+  | { type: "spectateEnd" }
   | { type: "profile"; trophies: number; best: number; wins: number; losses: number }
   | { type: "auth"; account: { name: string } | null; token?: string; deck?: CardId[] }
   | { type: "authError"; msg: string }
   | StateMsg
   | { type: "end"; winner: Team | -1; crowns: [number, number]; trophies?: { delta: number; total: number } }
-  | { type: "emote"; from: string; name: string; tm: Team; emote: string }
+  | { type: "emote"; from: string; name: string; tm: Team; emote: string; spectator?: boolean }
   | { type: "error"; msg: string };

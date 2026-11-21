@@ -324,7 +324,8 @@ export class Menu {
     const list = h("div", { class: "room-list" });
     const count = h("span", { class: "count" });
     const renderRooms = () => {
-      const rooms = app.rooms.filter((r) => !r.solo);
+      // Salons ouverts + toutes les parties en cours (même contre les bots) pour pouvoir les regarder
+      const rooms = app.rooms.filter((r) => !r.solo || r.status === "playing");
       const open = rooms.filter((r) => r.status === "lobby");
       const playing = rooms.filter((r) => r.status === "playing");
       count.textContent = String(rooms.length);
@@ -360,12 +361,19 @@ export class Menu {
         h(
           "div",
           { class: "rr-info" },
-          h("div", { class: "rr-title" }, `Salon de ${host}`),
-          h("div", { class: "rr-meta" }, h("span", { class: `chip mode-${r.mode}` }, r.mode), h("span", { class: "seats" }, ...seats), h("span", { class: "muted" }, `${humans.length}/${cap}`)),
+          h("div", { class: "rr-title" }, lobby ? `Salon de ${host}` : r.players.map((p) => p.name).join(" vs ")),
+          h(
+            "div",
+            { class: "rr-meta" },
+            h("span", { class: `chip mode-${r.mode}` }, r.mode),
+            h("span", { class: "seats" }, ...seats),
+            lobby ? h("span", { class: "muted" }, `${humans.length}/${cap}`) : h("span", { class: "live" }, h("i"), "En jeu"),
+            !lobby && r.spectators ? h("span", { class: "muted spec-count" }, icon("eye"), String(r.spectators)) : null,
+          ),
         ),
         lobby
           ? h("button", { class: "btn small", onclick: () => requireName(() => net.send({ type: "join", roomId: r.id })) }, "Rejoindre")
-          : h("span", { class: "live" }, h("i"), "En jeu"),
+          : h("button", { class: "btn small ghost", onclick: () => requireName(() => net.send({ type: "spectate", roomId: r.id })) }, icon("eye"), "Regarder"),
       );
     };
     renderRooms();

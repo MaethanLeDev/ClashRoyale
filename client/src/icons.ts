@@ -28,6 +28,7 @@ const STROKE: Record<string, string> = {
   door: '<path d="M14 3H6a1 1 0 0 0-1 1v17h10"/><path d="M14 3l5 2v16l-5 0z"/><path d="M11 12v.01" stroke-width="2.6"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   hand: '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5v-7a1.5 1.5 0 0 1 3 0v7"/><path d="M14 11.5v-5a1.5 1.5 0 0 1 3 0v7"/><path d="M17 13.5V10a1.5 1.5 0 0 1 3 0v4.5a7 7 0 0 1-7 7h-1.2a7 7 0 0 1-5.4-2.6L3.6 15.4a1.6 1.6 0 0 1 2.4-2.1L8 15"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.8A8 8 0 1 1 21 12z"/>',
 };
 

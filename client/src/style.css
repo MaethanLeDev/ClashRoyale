@@ -1373,3 +1373,131 @@ input[type="range"]::-moz-range-thumb {
     opacity: 0;
   }
 }
+
+/* ----- Spectateurs ----- */
+
+.spec-badge {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+  right: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 13px;
+  background: rgba(10, 14, 30, 0.75);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.crowd {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.crowd-emote {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1b1440;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--gold);
+  animation: crowd-rise 3.2s ease-out forwards;
+}
+
+.crowd-emote.left {
+  left: 10px;
+}
+
+.crowd-emote.right {
+  right: 10px;
+}
+
+.crowd-emote small {
+  font-weight: 900;
+  font-size: 11px;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes crowd-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.6);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  20% {
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120px) scale(0.95);
+  }
+}
+
+.spectator-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.spec-title {
+  font-family: var(--font-title);
+  font-size: 20px;
+  color: var(--gold);
+}
+
+.spec-teams {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.spec-teams .t-ally {
+  color: #8ec0ff;
+}
+
+.spec-teams .t-enemy {
+  color: #ff9a9a;
+}
+
+.vs-small {
+  font-family: var(--font-title);
+  color: var(--gold);
+}
+
+.spectator-bar .row {
+  justify-content: center;
+}
+
+.spectator-bar .row > .btn {
+  flex: 0 1 auto;
+}
+
+.end-title .word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.end-title.spectator {
+  font-size: clamp(36px, 8vw, 72px);
+}

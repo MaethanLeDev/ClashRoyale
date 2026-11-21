@@ -28,11 +28,21 @@ function updateConn() {
 
 // ---------- Partie ----------
 
-function startGame(team: Team, players: PlayerSnap[], arena: number, mode: Mode) {
+let spectating: { players: PlayerSnap[]; arena: number; team: Team; mode: Mode } | null = null;
+
+function leaveSpectating() {
+  net.send({ type: "stopSpectating" });
+  spectating = null;
+  stopGame();
+  menu?.show();
+}
+
+function startGame(team: Team, players: PlayerSnap[], arena: number, mode: Mode, spectator = false) {
+  spectating = spectator ? { players, arena, team, mode } : null;
   stopGame();
   closeAllSheets();
   app.inGame = true;
-  const solo = !!app.room?.solo || !app.room;
+  const solo = !spectator && (!!app.room?.solo || !app.room);
   menu?.hide();
   updateConn();
   let view: GameView | null = null;
@@ -44,10 +54,16 @@ function startGame(team: Team, players: PlayerSnap[], arena: number, mode: Mode)
     onCardDown: (card, e) => view?.startDrag(card, e),
     onEmote: (emote) => net.send({ type: "emote", emote }),
     onBack: () => {
+      if (spectator) return leaveSpectating();
       const wasSolo = game?.solo ?? solo;
       stopGame();
       if (wasSolo) net.send({ type: "leave" });
       menu?.show();
+    },
+    spectator,
+    onSwitchSide: () => {
+      if (!spectating) return;
+      startGame(spectating.team === 0 ? 1 : 0, spectating.players, spectating.arena, spectating.mode, true);
     },
   });
   view = new GameView({
@@ -57,7 +73,7 @@ function startGame(team: Team, players: PlayerSnap[], arena: number, mode: Mode)
     arena,
     mode,
     // L'hologramme n'a d'intérêt que pour un allié humain
-    onAim: mode === "2v2" && players.some((p) => p.tm === team && p.id !== app.myId && !p.bot)
+    onAim: !spectator && mode === "2v2" && players.some((p) => p.tm === team && p.id !== app.myId && !p.bot)
       ? (card, x, y) => net.send(card ? { type: "aim", card, x, y } : { type: "aim", card: null })
       : undefined,
     getInsets: () => ({ top: hud.topHeight(), bottom: hud.bottomHeight() }),
@@ -112,7 +128,7 @@ net.on((msg: ServerMsg) => {
       break;
     case "start":
       menu?.setPlayBusy(true);
-      assets.then(() => startGame(msg.team, msg.players, msg.arena ?? 0, msg.mode));
+      assets.then(() => startGame(msg.team, msg.players, msg.arena ?? 0, msg.mode, !!msg.spectator));
       break;
     case "state":
       if (game) {
@@ -156,7 +172,16 @@ net.on((msg: ServerMsg) => {
       emit("profile");
       break;
     case "emote":
-      game?.view.showEmote(msg.tm, msg.name, msg.emote);
+      if (msg.spectator) game?.hud.crowdEmote(msg.name, msg.emote);
+      else game?.view.showEmote(msg.tm, msg.name, msg.emote);
+      break;
+    case "spectateEnd":
+      if (spectating) {
+        spectating = null;
+        stopGame();
+        menu?.show();
+        toast(ui, "La partie a été interrompue");
+      }
       break;
     case "error":
       menu?.setPlayBusy(false);

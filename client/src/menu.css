@@ -1595,8 +1595,15 @@ input.code-input {
   animation: row-in 0.28s var(--ease) both;
 }
 
-.room-row.playing {
-  opacity: 0.75;
+.spec-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.spec-count .ico {
+  width: 14px;
+  height: 14px;
 }
 
 .rr-code {
@@ -1624,8 +1631,9 @@ input.code-input {
 
 .rr-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   margin-top: 5px;
   font-size: 12px;
   font-weight: 800;
