@@ -1,0 +1,15 @@
+{
+  "name": "USMB Arena",
+  "short_name": "USMB Arena",
+  "description": "Le jeu de cartes en temps réel de l'USMB : pose tes potes, rase les tours.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070b1e",
+  "theme_color": "#070b1e",
+  "lang": "fr",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

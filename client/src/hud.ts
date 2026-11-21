@@ -3,6 +3,7 @@ import { MAX_ELIXIR, RESOURCE_NAME } from "../../shared/constants";
 import type { PlayerSnap, StateMsg, Team } from "../../shared/protocol";
 import { cardEl, crownSvg, h, toast } from "./ui";
 import { getTilt, onTilt, setTilt } from "./settings";
+import { icon } from "./icons";
 
 export interface HudOptions {
   team: Team;
@@ -11,6 +12,7 @@ export interface HudOptions {
   onCardDown(card: CardId, e: PointerEvent): void;
   onEmote(emote: string): void;
   onBack(): void;
+  backLabel?: string;
 }
 
 import { EMOTES } from "../../shared/emotes";
@@ -84,7 +86,7 @@ export class Hud {
     this.dropNum = h("div", { class: "drop" }, "0");
     const ticks = h("div", { class: "ticks" }, ...Array.from({ length: 10 }, () => h("span")));
     const emoteBtn = h("button", { class: "emote-btn", title: "Émotes", onclick: () => this.toggleEmotes() }, "💬");
-    const settingsBtn = h("button", { class: "emote-btn settings-btn", title: "Caméra", onclick: () => this.toggleSettings() }, "🎥");
+    const settingsBtn = h("button", { class: "emote-btn settings-btn", title: "Caméra", onclick: () => this.toggleSettings() }, icon("camera"));
     this.bottom = h(
       "div",
       { class: "hud-bottom" },
@@ -281,7 +283,7 @@ export class Hud {
           h("small", {}, count, " trophées"),
         )
       : null;
-    const btn = h("button", { class: "btn gold big end-btn", onclick: () => this.opts.onBack() }, "Retour au salon");
+    const btn = h("button", { class: "btn gold big end-btn", onclick: () => this.opts.onBack() }, this.opts.backLabel ?? "Retour au salon");
     const card = h(
       "div",
       { class: "end-card" },

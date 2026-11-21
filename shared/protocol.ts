@@ -92,6 +92,7 @@ export interface RoomInfo {
   hostId: string;
   status: "lobby" | "playing";
   arena: number;
+  solo: boolean;
   botStyle: { label: string; description: string } | null;
   players: RoomPlayer[];
 }

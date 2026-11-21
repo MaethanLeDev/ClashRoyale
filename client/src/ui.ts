@@ -73,8 +73,7 @@ export function crownSvg(color: string): SVGSVGElement {
 }
 
 export function toast(parent: HTMLElement, msg: string, good = false) {
-  const el = h("div", { class: "toast" }, msg);
-  if (good) el.style.background = "rgba(40,140,70,0.92)";
+  const el = h("div", { class: `toast${good ? " good" : ""}`, role: "status" }, msg);
   parent.appendChild(el);
-  setTimeout(() => el.remove(), 1500);
+  setTimeout(() => el.remove(), 1800);
 }

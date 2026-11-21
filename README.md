@@ -23,7 +23,7 @@ Sur cette machine :   http://localhost:3000
 Sur le réseau local : http://192.168.1.42:3000
 ```
 
-Tout le monde ouvre l'adresse « réseau local » dans son navigateur (même Wi-Fi). Un joueur crée un salon, les autres tapent le code à 4 lettres ou cliquent dessus dans la liste. Les places vides sont remplies par des bots au lancement.
+Tout le monde ouvre l'adresse « réseau local » dans son navigateur (même Wi-Fi). « Jouer » lance directement une partie contre les bots (1v1, ou 2v2 avec un bot allié via le bouton Mode). Pour jouer entre potes : onglet **Amis**, un joueur crée un duel, les autres tapent le code à 4 lettres ou le rejoignent dans la liste. Les places vides sont remplies par des bots au lancement.
 
 Si le port 3000 est occupé ou bloqué (fréquent sous Windows avec Hyper-V, WSL ou Docker), le serveur essaie tout seul 8080, 8000, etc. et affiche le port retenu. Pour imposer un port :
 
@@ -61,8 +61,13 @@ shared/     code commun client + serveur
   protocol.ts   messages réseau
 server/     serveur HTTP + WebSocket, salons, bots, profils (trophées)
 client/     interface et rendu 3D
+  src/menu.ts   pages Deck / Combat / Amis (balayage), accueil
+  src/deckEditor.ts  éditeur de deck (sélection, glisser-déposer)
+  src/lobby.ts  salon des combats amicaux
+  src/account.ts  profil, connexion, voie des trophées, caméra
+  src/arenaArt.ts  vignettes SVG animées de chaque arène
   src/game/     arène, modèles, effets, vue
-  public/       photos des cartes (cards/) et têtes rondes (heads/)
+  public/       photos des cartes (cards/), têtes rondes (heads/), logo et icônes
 tools/      script de préparation des photos, test de simulation
 ```
 
@@ -82,11 +87,11 @@ tools/      script de préparation des photos, test de simulation
 | Tarit | 7 | Duster qui saute la rivière et vise les tours ; explose à sa mort et Tarit en sort |
 | Super Samy | 10 | Géant : rase toute tour qu'il touche |
 
-Un deck contient 8 cartes parmi 11, modifiable dans « Mon deck ».
+Un deck contient 8 cartes parmi 11, modifiable dans l'onglet **Deck** : toucher une carte affiche « Infos » / « Utiliser », ou glisser une carte sur une autre pour les échanger.
 
 ## Comptes
 
-On joue en invité par défaut (juste un pseudo). « Créer un compte » protège le pseudo par un mot de passe et garde les trophées et le deck sur le serveur : on les retrouve depuis n'importe quel PC qui se connecte au même serveur. La session reste ouverte 60 jours sur chaque navigateur.
+On joue en invité par défaut (juste un pseudo). Depuis l'icône de profil en haut à droite, « Créer un compte » protège le pseudo par un mot de passe et garde les trophées et le deck sur le serveur : on les retrouve depuis n'importe quel PC qui se connecte au même serveur. La session reste ouverte 60 jours sur chaque navigateur.
 
 Tout est stocké dans `data/db.json` sur la machine qui héberge le serveur (mots de passe hachés avec scrypt, jamais en clair). Pour garder les comptes en changeant de machine, il suffit de copier ce fichier. Un pseudo invité qui crée un compte récupère ses trophées d'invité.
 
@@ -116,7 +121,7 @@ Si les couronnes sont à égalité après les prolongations, toutes les tours pe
 
 ## Caméra
 
-Molette sur PC, ou bouton 🎥 en jeu et « Réglages → Caméra » depuis l'accueil (avec aperçu). Le réglage combine inclinaison et focale (effet « dolly zoom ») : vue quasi du dessus d'un côté, vue rapprochée en perspective de l'autre.
+Molette sur PC, ou bouton caméra en jeu et « Profil → Caméra en jeu » depuis l'accueil (avec aperçu). Le réglage combine inclinaison et focale (effet « dolly zoom ») : vue quasi du dessus d'un côté, vue rapprochée en perspective de l'autre.
 
 ## Modèles 3D
 

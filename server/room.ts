@@ -37,6 +37,8 @@ export class Room {
   bots: BotLike[] = [];
   private timer: NodeJS.Timeout | null = null;
   private botCounter = 0;
+  /** Partie contre les bots lancée depuis « Jouer » : n'apparaît pas dans les combats amicaux. */
+  solo = false;
 
   constructor(
     public id: string,
@@ -60,7 +62,7 @@ export class Room {
   info(): RoomInfo {
     const arena = arenaFor(this.topTrophies()).id;
     return {
-      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena,
+      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena, solo: this.solo,
       botStyle: brainSummary(arena),
       players: this.slots.map(({ id, name, team, bot, ready, account }) => ({ id, name, team, bot, ready, account })),
     };

@@ -20,6 +20,8 @@ const MIME: Record<string, string> = {
   ".css": "text/css",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".webp": "image/webp",
+  ".webmanifest": "application/manifest+json",
   ".svg": "image/svg+xml",
   ".json": "application/json",
   ".ico": "image/x-icon",
@@ -69,7 +71,7 @@ function roomCode(): string {
 }
 
 function publishRooms() {
-  const list = [...rooms.values()].filter((r) => r.humans.length > 0).map((r) => r.info());
+  const list = [...rooms.values()].filter((r) => r.humans.length > 0 && !r.solo).map((r) => r.info());
   for (const c of clients.values()) if (!c.roomId) c.send({ type: "rooms", rooms: list });
 }
 
@@ -82,13 +84,14 @@ function leaveRoom(c: Client) {
   publishRooms();
 }
 
-function createRoom(c: Client, mode: "1v1" | "2v2"): Room | null {
+function createRoom(c: Client, mode: "1v1" | "2v2", solo = false): Room | null {
   leaveRoom(c);
   if (rooms.size >= MAX_ROOMS) {
     c.send({ type: "error", msg: "Le serveur est plein, réessaie dans un moment" });
     return null;
   }
   const room = new Room(roomCode(), mode, c.id, publishRooms);
+  room.solo = solo;
   rooms.set(room.id, room);
   room.addClient(c);
   return room;
@@ -213,7 +216,7 @@ wss.on("connection", (ws: WebSocket, req) => {
         createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1");
         break;
       case "solo": {
-        const r = createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1");
+        const r = createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1", true);
         if (r) fail(r.start());
         break;
       }
