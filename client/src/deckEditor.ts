@@ -14,23 +14,39 @@ function fmt(v: number, unit = "") {
 
 function cardStats(c: CardDef): [string, string][] {
   const out: [string, string][] = [];
-  if (c.unit) {
+  const brew = c.unit?.brew;
+  if (c.unit && brew) {
+    const u = c.unit;
+    const total = Math.floor((u.lifetime ?? 0) / brew.every) * brew.amount;
+    out.push(["Points de vie", String(u.hp)]);
+    out.push(["Production", `+${brew.amount} ${RESOURCE_NAME} / ${fmt(brew.every)} s`]);
+    out.push(["Total", `${total} ${RESOURCE_NAME}`]);
+    out.push(["Durée de vie", `${u.lifetime} s`]);
+  } else if (c.unit) {
     const u = c.unit;
     out.push(["Points de vie", String(u.hp)]);
     out.push(["Dégâts", u.towerKiller ? "Rase la tour" : String(u.damage)]);
-    if (!u.towerKiller) out.push(["Dégâts/s", fmt(u.damage / u.hitSpeed)]);
+    if (u.boomerang) out.push(["Passages", "Aller + retour"]);
+    else if (!u.towerKiller) out.push(["Dégâts/s", fmt(u.damage / u.hitSpeed)]);
     out.push(["Vitesse d'attaque", fmt(u.hitSpeed, " s")]);
     out.push(["Portée", u.range >= 2 ? fmt(u.range) : "Mêlée"]);
     if (u.speed > 0) out.push(["Vitesse", u.speed >= 1.5 ? "Très rapide" : u.speed >= 1.1 ? "Rapide" : u.speed >= 0.7 ? "Moyenne" : "Très lente"]);
     out.push(["Cible", u.targetsBuildingsOnly ? "Bâtiments" : "Sol"]);
     if (c.count > 1) out.push(["Nombre", `x${c.count}`]);
+    if (u.revive) out.push(["Seconde vie", `${Math.round(u.revive * 100)} % des PV`]);
     if (u.lifetime) out.push(["Durée de vie", `${u.lifetime} s`]);
   }
   if (c.spell) {
     out.push(["Dégâts", String(c.spell.damage)]);
     out.push(["Dégâts aux tours", String(c.spell.towerDamage)]);
-    out.push(["Gel", `${c.spell.freeze} s`]);
-    out.push(["Rayon", fmt(c.spell.radius)]);
+    if (c.spell.roll) {
+      out.push(["Distance", `${c.spell.roll.distance} cases`]);
+      out.push(["Largeur", `${fmt(c.spell.roll.width)} cases`]);
+      out.push(["Recul", `${c.spell.roll.knockback} case`]);
+    } else {
+      out.push(["Gel", `${c.spell.freeze} s`]);
+      out.push(["Rayon", fmt(c.spell.radius)]);
+    }
   }
   if (c.deployAnywhere) out.push(["Placement", "N'importe où"]);
   return out;

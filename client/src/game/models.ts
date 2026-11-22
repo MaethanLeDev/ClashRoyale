@@ -240,6 +240,8 @@ export interface UnitModel {
   cape?: THREE.Mesh;
   bulb?: THREE.Mesh;
   wheels?: THREE.Object3D[];
+  prop?: THREE.Object3D;
+  steam?: THREE.Vector3;
   height: number;
   barY: number;
   barW: number;
@@ -257,6 +259,8 @@ function trackMats(o: THREE.Object3D): THREE.MeshStandardMaterial[] {
 export function createUnitModel(card: CardDef, color: number): UnitModel {
   const glb = createGlbUnitModel(card, color);
   if (glb) return glb;
+  if (card.look.cat) return createCatModel(card, color);
+  if (card.look.coffee) return createCoffeeModel(card, color);
   if (card.look.building) return createBuildingModel(card, color);
   if (card.look.vehicle) return createVehicleModel(card, color);
   const root = new THREE.Group();
@@ -310,6 +314,7 @@ export function createUnitModel(card: CardDef, color: number): UnitModel {
     arms.push(pivot);
   }
   const right = arms[1];
+  let prop: THREE.Object3D | undefined;
   if (card.look.weapon === "sword") {
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.95, 0.03), mat(0xd9dde6, { metalness: 0.85, roughness: 0.25 }));
     blade.position.set(0, -0.42, 0.5);
@@ -343,6 +348,19 @@ export function createUnitModel(card: CardDef, color: number): UnitModel {
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff3b0 }));
     core.position.copy(orb.position);
     right.add(core);
+  } else if (card.look.weapon === "briefcase") {
+    prop = createBriefcase(card.look.accent);
+    prop.position.set(0, -0.5, 0.08);
+    right.add(prop);
+    const coat = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.34, 0.42, 12, 1, true), mat(card.look.body, { side: THREE.DoubleSide, roughness: 0.85 }));
+    coat.position.y = 0.42;
+    inner.add(coat);
+    for (const sx of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.32, 0.03), mat(0x8fb3e0));
+      lapel.position.set(sx * 0.07, 0.86, 0.24);
+      lapel.rotation.z = sx * 0.25;
+      inner.add(lapel);
+    }
   } else if (card.look.weapon === "finger") {
     const tip = new THREE.Mesh(
       new THREE.SphereGeometry(0.07, 8, 6),
@@ -377,9 +395,187 @@ export function createUnitModel(card: CardDef, color: number): UnitModel {
   const vs = s >= 3 ? s : s * 1.3;
   inner.scale.setScalar(vs);
   return {
-    root, inner, head, legs, arms, mats: trackMats(inner), cape,
+    root, inner, head, legs, arms, mats: trackMats(inner), cape, prop,
     height: 1.9 * vs, barY: 2.0 * vs + 0.15, barW: Math.min(2.4, 0.6 + vs * 0.45),
   };
+}
+
+function createBriefcase(color: number): THREE.Group {
+  const g = new THREE.Group();
+  const leather = mat(color, { roughness: 0.55 });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.32, 0.12), leather);
+  box.position.y = -0.17;
+  g.add(box);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.022, 6, 12, Math.PI), mat(0x2a1a10));
+  handle.position.y = 0;
+  g.add(handle);
+  const gold = mat(0xd4af37, { metalness: 0.8, roughness: 0.3 });
+  for (const sx of [-1, 1]) {
+    const latch = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), gold);
+    latch.position.set(sx * 0.13, -0.04, 0.065);
+    g.add(latch);
+  }
+  return g;
+}
+
+function createCatModel(card: CardDef, color: number): UnitModel {
+  const root = new THREE.Group();
+  const inner = new THREE.Group();
+  root.add(inner);
+  const fur = mat(card.look.body, { roughness: 0.95 });
+  const light = mat(card.look.accent, { roughness: 0.95 });
+  const team = mat(color, { roughness: 0.45, emissive: color, emissiveIntensity: 0.2 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.42, 4, 10), fur);
+  body.rotation.x = Math.PI / 2;
+  body.position.y = 0.42;
+  inner.add(body);
+  const belly = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.3, 4, 8), light);
+  belly.rotation.x = Math.PI / 2;
+  belly.position.set(0, 0.35, 0.05);
+  inner.add(belly);
+  const legs: THREE.Object3D[] = [];
+  const hips: [number, number][] = [[-0.11, 0.24], [0.11, 0.24], [0.11, -0.22], [-0.11, -0.22]];
+  for (const [x, z] of hips) {
+    const pivot = new THREE.Group();
+    pivot.position.set(x, 0.36, z);
+    const g = new THREE.CapsuleGeometry(0.06, 0.2, 4, 6);
+    g.translate(0, -0.18, 0);
+    pivot.add(new THREE.Mesh(g, fur));
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), light);
+    paw.scale.set(1, 0.6, 1.3);
+    paw.position.set(0, -0.33, 0.03);
+    pivot.add(paw);
+    inner.add(pivot);
+    legs.push(pivot);
+  }
+  const tail = new THREE.Group();
+  tail.position.set(0, 0.5, -0.42);
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0.15, -0.15), new THREE.Vector3(0, 0.42, -0.2), new THREE.Vector3(0, 0.6, -0.08),
+  ]);
+  tail.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.055, 6), fur));
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), team);
+  tip.position.set(0, 0.6, -0.08);
+  tail.add(tip);
+  inner.add(tail);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 6, 16), team);
+  collar.position.set(0, 0.6, 0.3);
+  collar.rotation.x = Math.PI / 2 - 0.5;
+  inner.add(collar);
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), mat(0xffd84a, { metalness: 0.7, roughness: 0.3 }));
+  bell.position.set(0, 0.55, 0.42);
+  inner.add(bell);
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(card.id, color), alphaTest: 0.5 }));
+  head.scale.set(0.8, 0.8, 1);
+  head.position.set(0, 0.9, 0.32);
+  inner.add(head);
+  shadowed(inner);
+  return {
+    root, inner, head, legs, arms: [tail], mats: trackMats(inner),
+    height: 1.3, barY: 1.45, barW: 0.8,
+  };
+}
+
+function createCoffeeModel(card: CardDef, color: number): UnitModel {
+  const root = new THREE.Group();
+  const inner = new THREE.Group();
+  root.add(inner);
+  const wood = mat(card.look.body, { roughness: 0.8 });
+  const steel = mat(0xd9dee6, { metalness: 0.3, roughness: 0.3 });
+  const darkSteel = mat(0x4a505a, { metalness: 0.3, roughness: 0.4 });
+  const team = mat(color, { roughness: 0.45, emissive: color, emissiveIntensity: 0.2 });
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.9, 1.2), wood);
+  counter.position.y = 0.45;
+  inner.add(counter);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.08, 1.3), mat(card.look.accent));
+  top.position.y = 0.94;
+  inner.add(top);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.14, 1.22), team);
+  stripe.position.y = 0.72;
+  inner.add(stripe);
+  const machine = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 0.7), steel);
+  machine.position.set(0, 1.38, -0.15);
+  inner.add(machine);
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.12, 0.76), darkSteel);
+  hood.position.set(0, 1.84, -0.15);
+  inner.add(hood);
+  for (const sx of [-0.28, 0.28]) {
+    const group = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.16, 10), darkSteel);
+    group.position.set(sx, 1.12, 0.26);
+    inner.add(group);
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.14, 12), mat(0xf4f1ea));
+    cup.position.set(sx, 1.05, 0.3);
+    inner.add(cup);
+    const coffee = new THREE.Mesh(new THREE.CircleGeometry(0.075, 12), mat(0x3b2416));
+    coffee.rotation.x = -Math.PI / 2;
+    coffee.position.set(sx, 1.121, 0.3);
+    inner.add(coffee);
+  }
+  const gauge = new THREE.Mesh(new THREE.CircleGeometry(0.1, 16), mat(0xffffff));
+  gauge.position.set(0.35, 1.55, 0.206);
+  inner.add(gauge);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0x7cff8a, { emissive: 0x2bff5a, emissiveIntensity: 0.6 }));
+  bulb.position.set(-0.35, 1.58, 0.21);
+  inner.add(bulb);
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.5, 0.36),
+    new THREE.MeshBasicMaterial({ map: textTexture("CAFÉ", { width: 256, height: 64, color: "#ffe2b8", bg: "#3a2a22" }), transparent: true }),
+  );
+  sign.position.set(0, 0.45, 0.61);
+  inner.add(sign);
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(card.id, color), alphaTest: 0.5 }));
+  head.scale.set(1.25, 1.25, 1);
+  head.position.set(0, 2.65, -0.15);
+  inner.add(head);
+  shadowed(inner);
+  return {
+    root, inner, head, legs: [], arms: [], mats: trackMats(inner), bulb, steam: new THREE.Vector3(0, 1.95, -0.15),
+    height: 3.2, barY: 3.6, barW: 1.6,
+  };
+}
+
+export function createRollerModel(id: CardDef["id"], color: number): THREE.Group {
+  const g = new THREE.Group();
+  const spin = new THREE.Group();
+  spin.name = "spin";
+  g.add(spin);
+  const shirt = mat(0x1f2a44, { roughness: 0.8 });
+  const jeans = mat(0x2d3b55, { roughness: 0.85 });
+  const skin = mat(0xe0b089);
+  const team = mat(color, { roughness: 0.45, emissive: color, emissiveIntensity: 0.25 });
+  const along = (geo: THREE.BufferGeometry) => {
+    geo.rotateZ(Math.PI / 2);
+    return geo;
+  };
+  const torso = new THREE.Mesh(along(new THREE.CapsuleGeometry(0.3, 0.7, 4, 10)), shirt);
+  torso.position.x = 0.15;
+  spin.add(torso);
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.05, 6, 16), team);
+  belt.rotation.y = Math.PI / 2;
+  belt.position.x = 0.55;
+  spin.add(belt);
+  for (const s of [-1, 1]) {
+    const leg = new THREE.Mesh(along(new THREE.CapsuleGeometry(0.12, 0.9, 4, 8)), jeans);
+    leg.position.set(1.15, s * 0.14, 0);
+    spin.add(leg);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.3), mat(0xf2f2f2));
+    shoe.position.set(1.72, s * 0.14, 0.05);
+    spin.add(shoe);
+    const arm = new THREE.Mesh(along(new THREE.CapsuleGeometry(0.09, 0.8, 4, 8)), shirt);
+    arm.position.set(-1.0, s * 0.2, 0);
+    spin.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), skin);
+    hand.position.set(-1.5, s * 0.2, 0);
+    spin.add(hand);
+  }
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(id, color), alphaTest: 0.5 }));
+  head.name = "face";
+  head.scale.set(0.95, 0.95, 1);
+  head.position.set(-0.5, 0, 0);
+  g.add(head);
+  g.scale.setScalar(1.05);
+  shadowed(g);
+  return g;
 }
 
 function createGlbUnitModel(card: CardDef, color: number): UnitModel | null {
@@ -576,6 +772,13 @@ export function createProjectileModel(kind: string, color: number): THREE.Object
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.03;
     g.add(ring);
+  } else if (kind === "briefcase") {
+    const b = createBriefcase(0x5b3a22);
+    b.name = "spin";
+    b.scale.setScalar(1.5);
+    g.add(b);
+  } else if (kind === "mathisucre") {
+    g.add(createRollerModel("mathisucre", color));
   } else if (kind === "barrel") {
     const box = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.6, 0.75), mat(0xc4975a));
     g.add(box);

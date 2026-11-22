@@ -58,7 +58,10 @@ export type GameEvent =
   | { e: "smash"; id: number; tid: number; x: number; y: number }
   | { e: "explode"; x: number; y: number; r: number; tm: Team }
   | { e: "tiebreak" }
-  | { e: "splash"; x: number; y: number; r: number; tm: Team };
+  | { e: "splash"; x: number; y: number; r: number; tm: Team }
+  | { e: "revive"; id: number; x: number; y: number; c: CardId; tm: Team }
+  | { e: "brew"; id: number; x: number; y: number; tm: Team; by: string; n: number }
+  | { e: "knock"; id: number; x: number; y: number };
 
 /** Carte qu'un joueur tient au-dessus de l'arène (hologramme montré à son allié). */
 export interface AimSnap {

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CARDS, type CardId } from "../../../shared/cards";
-import { createProjectileModel, createUnitModel, type UnitModel } from "./models";
+import { createProjectileModel, createRollerModel, createUnitModel, type UnitModel } from "./models";
 import { ALLY } from "./textures";
 
 // Petite scène 3D de la fiche d'une carte : le modèle sur un socle qui tourne,
@@ -24,6 +24,7 @@ interface Shot {
   t: number;
   from: THREE.Vector3;
   to: THREE.Vector3;
+  back?: Actor;
 }
 
 export interface Showcase {
@@ -31,7 +32,7 @@ export interface Showcase {
 }
 
 export function hasShowcase(id: CardId): boolean {
-  return CARDS[id].kind !== "spell";
+  return CARDS[id].kind !== "spell" || !!CARDS[id].spell?.roll;
 }
 
 export function createShowcase(container: HTMLElement, id: CardId): Showcase | null {
@@ -64,11 +65,17 @@ export function createShowcase(container: HTMLElement, id: CardId): Showcase | n
   scene.add(turntable);
 
   const actors: Actor[] = [];
-  const n = card.kind === "troop" ? Math.min(card.count, 3) : 1;
+  const roller = card.spell?.roll ? createRollerModel(card.id, ALLY) : null;
+  if (roller) {
+    roller.position.y = 0.8;
+    roller.scale.setScalar(1.5);
+    turntable.add(roller);
+  }
+  const n = roller ? 0 : card.kind === "troop" ? Math.min(card.count, 3) : 1;
   const spots = n === 1 ? [[0, 0]] : n === 2 ? [[-0.6, 0], [0.6, 0]] : [[0, 0.45], [-0.85, -0.35], [0.85, -0.35]];
   let spacing = 0;
   for (let i = 0; i < n; i++) {
-    const model = createUnitModel(card, ALLY);
+    const model = createUnitModel(card.spawns ? CARDS[card.spawns[i % card.spawns.length]] : card, ALLY);
     if (i === 0) spacing = Math.max(0.9, model.barW * 0.9);
     model.root.position.set(spots[i][0] * spacing, 0, spots[i][1] * spacing);
     turntable.add(model.root);
@@ -79,7 +86,8 @@ export function createShowcase(container: HTMLElement, id: CardId): Showcase | n
   turntable.updateMatrixWorld(true);
   const box = new THREE.Box3();
   for (const a of actors) box.expandByObject(a.model.root);
-  const top = Math.max(box.max.y, ...actors.map((a) => a.model.height));
+  if (roller) box.expandByObject(roller);
+  const top = Math.max(box.max.y, ...actors.map((a) => a.model.height), roller ? 1.6 : 0);
   const radius = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 1) / 2;
   box.max.y = top;
 
@@ -151,7 +159,8 @@ export function createShowcase(container: HTMLElement, id: CardId): Showcase | n
 
   const shots: Shot[] = [];
   const shoot = (a: Actor) => {
-    const proj = card.unit?.projectile;
+    const boomerang = !!card.unit?.boomerang;
+    const proj = boomerang ? { kind: "briefcase" } : card.unit?.projectile;
     if (!proj) return;
     const m = a.model;
     const obj = createProjectileModel(proj.kind, ALLY);
@@ -163,7 +172,8 @@ export function createShowcase(container: HTMLElement, id: CardId): Showcase | n
     const to = from.clone().addScaledVector(fwd, radius + 3).setY(0.4);
     obj.position.copy(from);
     turntable.add(obj);
-    shots.push({ obj, t: 0, from, to });
+    shots.push({ obj, t: 0, from, to, back: boomerang ? a : undefined });
+    if (boomerang && m.prop) m.prop.visible = false;
   };
 
   const isFinger = card.look.weapon === "finger";
@@ -200,7 +210,7 @@ export function createShowcase(container: HTMLElement, id: CardId): Showcase | n
       if (walking) a.walk += dt * (4 + speed * 5) / Math.max(0.8, Math.sqrt(card.look.scale));
       const swing = walking ? Math.sin(a.walk) * 0.7 : 0;
       for (const [i, leg] of m.legs.entries()) {
-        const target = i === 0 ? swing : -swing;
+        const target = i % 2 === 0 ? swing : -swing;
         leg.rotation.x += (target - leg.rotation.x) * Math.min(1, dt * 14);
       }
       for (const [i, arm] of m.arms.entries()) {
@@ -232,12 +242,32 @@ export function createShowcase(container: HTMLElement, id: CardId): Showcase | n
       }
     }
 
+    if (roller) {
+      const k = (time % 2.4) / 2.4;
+      const z = Math.sin(k * Math.PI * 2) * 1.1;
+      const prevZ = roller.position.z;
+      roller.position.z = z;
+      const spin = roller.getObjectByName("spin");
+      const face = roller.getObjectByName("face") as THREE.Sprite | undefined;
+      const dz = z - prevZ;
+      if (spin) spin.rotation.x += dz / 0.55;
+      if (face) face.material.rotation += dz / 0.55;
+    }
+
     for (let i = shots.length - 1; i >= 0; i--) {
       const s = shots[i];
-      s.t += dt / 0.45;
-      s.obj.position.lerpVectors(s.from, s.to, Math.min(1, s.t));
-      s.obj.position.y += Math.sin(Math.min(1, s.t) * Math.PI) * 0.5;
+      s.t += dt / (s.back ? 1.2 : 0.45);
+      if (s.back) {
+        s.obj.position.lerpVectors(s.from, s.to, Math.sin(Math.min(1, s.t) * Math.PI));
+        s.obj.position.y = s.from.y;
+        const spin = s.obj.getObjectByName("spin");
+        if (spin) spin.rotation.y += dt * 14;
+      } else {
+        s.obj.position.lerpVectors(s.from, s.to, Math.min(1, s.t));
+        s.obj.position.y += Math.sin(Math.min(1, s.t) * Math.PI) * 0.5;
+      }
       if (s.t >= 1) {
+        if (s.back?.model.prop) s.back.model.prop.visible = true;
         turntable.remove(s.obj);
         shots.splice(i, 1);
       }

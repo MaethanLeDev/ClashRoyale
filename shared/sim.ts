@@ -50,6 +50,9 @@ export interface Unit extends Body {
   stuck: number;
   sidestep: number;
   side: number;
+  owner: string | null;
+  revived: boolean;
+  brewT: number;
 }
 
 export interface Tower extends Body {
@@ -81,6 +84,40 @@ interface Projectile {
   towerKiller: boolean;
   splash: number;
   payload?: { card: CardId; owner: string };
+}
+
+interface Roller {
+  id: number;
+  kind: string;
+  team: Team;
+  x: number;
+  y: number;
+  dir: number;
+  left: number;
+  speed: number;
+  width: number;
+  damage: number;
+  towerDamage: number;
+  knockback: number;
+  hit: Set<number>;
+}
+
+interface Boomerang {
+  id: number;
+  team: Team;
+  ownerId: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  left: number;
+  back: boolean;
+  homeX: number;
+  homeY: number;
+  speed: number;
+  width: number;
+  damage: number;
+  hit: Set<number>;
 }
 
 interface PendingSpell {
@@ -120,6 +157,8 @@ export class Sim {
   towers: Tower[] = [];
   projectiles: Projectile[] = [];
   spells: PendingSpell[] = [];
+  rollers: Roller[] = [];
+  boomerangs: Boomerang[] = [];
   events: GameEvent[] = [];
   private nextId = 1;
 
@@ -203,6 +242,15 @@ export class Sim {
 
   private deploy(p: SimPlayer, card: CardDef, x: number, y: number) {
     this.emit({ e: "deploy", c: card.id, x, y, tm: p.team, by: p.id });
+    if (card.kind === "spell" && card.spell?.roll) {
+      const r = card.spell.roll;
+      this.rollers.push({
+        id: this.nextId++, kind: card.id, team: p.team, x, y, dir: p.team === 0 ? 1 : -1, left: r.distance,
+        speed: r.speed, width: r.width, damage: card.spell.damage, towerDamage: card.spell.towerDamage,
+        knockback: r.knockback, hit: new Set(),
+      });
+      return;
+    }
     if (card.kind === "spell" && card.spell) {
       this.spells.push({ card, team: p.team, x, y, timer: card.spell.delay });
       this.emit({ e: "spellCast", c: card.id, x, y, r: card.spell.radius, tm: p.team, delay: card.spell.delay });
@@ -221,10 +269,10 @@ export class Sim {
       });
       return;
     }
-    this.spawnUnits(card, p.team, x, y, DEPLOY_TIME);
+    this.spawnUnits(card, p.team, x, y, DEPLOY_TIME, p.id);
   }
 
-  private spawnUnits(card: CardDef, team: Team, x: number, y: number, deployTime: number) {
+  private spawnUnits(card: CardDef, team: Team, x: number, y: number, deployTime: number, owner: string | null = null) {
     const n = card.count;
     for (let i = 0; i < n; i++) {
       let ux = x;
@@ -235,17 +283,19 @@ export class Sim {
         ux = x + Math.cos(a) * ring;
         uy = y + Math.sin(a) * ring;
       }
-      this.spawnUnit(card, team, ux, uy, deployTime);
+      const kind = card.spawns ? CARDS[card.spawns[i % card.spawns.length]] : card;
+      this.spawnUnit(kind, team, ux, uy, deployTime, owner);
     }
   }
 
-  spawnUnit(card: CardDef, team: Team, x: number, y: number, deployTime: number): Unit {
+  spawnUnit(card: CardDef, team: Team, x: number, y: number, deployTime: number, owner: string | null = null): Unit {
     const s = card.unit!;
     const u: Unit = {
       id: this.nextId++, team, x, y, px: x, py: y, radius: s.radius, hp: s.hp, maxHp: s.hp, frozen: 0,
       card: card.id, stats: s, building: card.kind === "building", mass: s.mass, deployLeft: deployTime,
       cooldown: s.firstHit, targetId: null, locked: false, facing: team === 0 ? Math.PI / 2 : -Math.PI / 2,
       state: UNIT_STATE.deploying, life: s.lifetime ?? 0, stuck: 0, sidestep: 0, side: this.nextId % 2 ? 1 : -1,
+      owner, revived: false, brewT: 0,
     };
     this.clampPosition(u);
     this.units.push(u);
@@ -294,6 +344,8 @@ export class Sim {
     this.updateSpells(dt);
     this.updateUnits(dt);
     this.separate();
+    this.updateRollers(dt);
+    this.updateBoomerangs(dt);
     this.updateTowers(dt);
     this.updateProjectiles(dt);
     this.cleanup();
@@ -424,6 +476,11 @@ export class Sim {
         continue;
       }
       const s = u.stats;
+      if (s.brew) this.brew(u, s.brew, dt);
+      if (s.damage <= 0) {
+        u.state = UNIT_STATE.idle;
+        continue;
+      }
       const target = this.findTarget(u);
       if (!target) {
         u.state = UNIT_STATE.idle;
@@ -474,6 +531,104 @@ export class Sim {
     }
   }
 
+  private brew(u: Unit, b: { every: number; amount: number }, dt: number) {
+    u.brewT += dt;
+    if (u.brewT < b.every) return;
+    u.brewT -= b.every;
+    const p = u.owner ? this.players.get(u.owner) : undefined;
+    if (!p) return;
+    const before = p.elixir;
+    p.elixir = Math.min(MAX_ELIXIR, p.elixir + b.amount);
+    this.emit({ e: "brew", id: u.id, x: r2(u.x), y: r2(u.y), tm: u.team, by: p.id, n: Math.round((p.elixir - before) * 10) / 10 });
+  }
+
+  private updateRollers(dt: number) {
+    for (const r of this.rollers) {
+      const step = Math.min(r.left, r.speed * dt);
+      const y0 = r.y;
+      let y1 = r.y + r.dir * step;
+      const edge = r.dir > 0 ? ARENA_H - 0.3 : 0.3;
+      if ((r.dir > 0 && y1 >= edge) || (r.dir < 0 && y1 <= edge)) {
+        y1 = edge;
+        r.left = 0;
+      } else {
+        r.left -= step;
+      }
+      r.y = y1;
+      const lo = Math.min(y0, y1);
+      const hi = Math.max(y0, y1);
+      const half = r.width / 2;
+      for (const u of this.units) {
+        if (u.team === r.team || u.hp <= 0 || r.hit.has(u.id)) continue;
+        if (Math.abs(u.x - r.x) > half + u.radius * 0.5) continue;
+        if (u.y < lo - u.radius - 0.4 || u.y > hi + u.radius + 0.4) continue;
+        r.hit.add(u.id);
+        this.damage(u, r.damage, "roll");
+        if (!u.building && u.mass < 15 && r.knockback > 0) {
+          u.y += r.dir * r.knockback;
+          u.cooldown = Math.max(u.cooldown, u.stats.firstHit);
+          u.locked = false;
+          this.clampPosition(u);
+          this.emit({ e: "knock", id: u.id, x: r2(u.x), y: r2(u.y) });
+        }
+      }
+      for (const t of this.towers) {
+        if (t.team === r.team || !t.alive || r.hit.has(t.id)) continue;
+        if (Math.abs(t.x - r.x) > half + t.radius * 0.7) continue;
+        if (t.y < lo - t.radius || t.y > hi + t.radius) continue;
+        r.hit.add(t.id);
+        this.damage(t, r.towerDamage, "roll");
+      }
+    }
+    this.rollers = this.rollers.filter((r) => r.left > 0);
+  }
+
+  private updateBoomerangs(dt: number) {
+    for (const b of this.boomerangs) {
+      const owner = this.units.find((v) => v.id === b.ownerId && v.hp > 0);
+      if (owner) {
+        b.homeX = owner.x;
+        b.homeY = owner.y;
+      }
+      let step = b.speed * dt;
+      if (!b.back) {
+        const go = Math.min(step, b.left);
+        b.x += b.dx * go;
+        b.y += b.dy * go;
+        b.left -= go;
+        const out = b.x < 0.2 || b.x > ARENA_W - 0.2 || b.y < 0.2 || b.y > ARENA_H - 0.2;
+        if (b.left <= 1e-6 || out) {
+          b.back = true;
+          b.hit.clear();
+        }
+      } else {
+        const hx = b.homeX - b.x;
+        const hy = b.homeY - b.y;
+        const d = Math.hypot(hx, hy);
+        if (d <= step) {
+          b.left = -1;
+          continue;
+        }
+        step = Math.min(step, d);
+        b.x += (hx / d) * step;
+        b.y += (hy / d) * step;
+      }
+      for (const u of this.units) {
+        if (u.team === b.team || u.hp <= 0 || b.hit.has(u.id)) continue;
+        if (Math.hypot(u.x - b.x, u.y - b.y) - u.radius > b.width) continue;
+        b.hit.add(u.id);
+        this.damage(u, b.damage, "briefcase");
+      }
+      for (const t of this.towers) {
+        if (t.team === b.team || !t.alive || b.hit.has(t.id)) continue;
+        if (Math.hypot(t.x - b.x, t.y - b.y) - t.radius > b.width) continue;
+        b.hit.add(t.id);
+        this.damage(t, b.damage, "briefcase");
+      }
+    }
+    this.boomerangs = this.boomerangs.filter((b) => b.left >= 0);
+  }
+
   private avoid(u: Unit, dx: number, dy: number, target: Unit | Tower): [number, number] {
     let sx = 0;
     let sy = 0;
@@ -511,6 +666,17 @@ export class Sim {
     if (s.towerKiller && this.isBuilding(target)) {
       this.emit({ e: "smash", id: u.id, tid: target.id, x: r2(target.x), y: r2(target.y) });
       this.damage(target, target.hp + 1, "smash");
+      return;
+    }
+    if (s.boomerang) {
+      const dx = target.x - u.x;
+      const dy = target.y - u.y;
+      const d = Math.hypot(dx, dy) || 1;
+      this.boomerangs.push({
+        id: this.nextId++, team: u.team, ownerId: u.id, x: u.x, y: u.y, dx: dx / d, dy: dy / d,
+        left: s.boomerang.distance, back: false, homeX: u.x, homeY: u.y, speed: s.boomerang.speed,
+        width: s.boomerang.width, damage: s.damage, hit: new Set(),
+      });
       return;
     }
     if (s.projectile) {
@@ -773,7 +939,16 @@ export class Sim {
         const x = u.x;
         let y = u.y;
         if (y > RIVER_LO - 0.3 && y < RIVER_HI + 0.3) y = u.team === 0 ? RIVER_HI + 0.4 : RIVER_LO - 0.4;
-        this.spawnUnit(CARDS[u.stats.deathSpawn], u.team, x, y, 0.4);
+        this.spawnUnit(CARDS[u.stats.deathSpawn], u.team, x, y, 0.4, u.owner);
+      }
+      if (u.stats.revive && !u.revived) {
+        let y = u.y;
+        if (y > RIVER_LO - 0.3 && y < RIVER_HI + 0.3) y = u.py < RIVER_Y ? RIVER_LO - 0.4 : RIVER_HI + 0.4;
+        const v = this.spawnUnit(CARDS[u.card], u.team, u.x, y, 0.9, u.owner);
+        v.revived = true;
+        v.hp = v.maxHp * u.stats.revive;
+        v.facing = u.facing;
+        this.emit({ e: "revive", id: v.id, x: r2(v.x), y: r2(v.y), c: v.card, tm: v.team });
       }
     }
   }
@@ -795,6 +970,8 @@ export class Sim {
     this.tiebreakT = 0;
     this.projectiles = [];
     this.spells = [];
+    this.rollers = [];
+    this.boomerangs = [];
     this.emit({ e: "tiebreak" });
   }
 
@@ -870,6 +1047,8 @@ export class Sim {
     const proj: ProjSnap[] = this.projectiles.map((p) => ({
       id: p.id, k: p.kind, tm: p.team, x: r2(p.x), y: r2(p.y), h: r2(p.h),
     }));
+    for (const r of this.rollers) proj.push({ id: r.id, k: r.kind, tm: r.team, x: r2(r.x), y: r2(r.y), h: 0.55 });
+    for (const b of this.boomerangs) proj.push({ id: b.id, k: "briefcase", tm: b.team, x: r2(b.x), y: r2(b.y), h: 1.1 });
     return {
       type: "state", t: r2(this.time),
       phase: this.phase,

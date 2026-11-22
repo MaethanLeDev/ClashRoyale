@@ -90,3 +90,64 @@ if len(sys.argv) >= 6:
         if scale < 1:
             im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
         im.save(f"{OUT}/cards/{cid}.png", optimize=True)
+
+
+def cutout_white(im, thr=246, holes_above=None):
+    import numpy as np
+    from collections import deque
+    from PIL import ImageFilter
+    a = np.asarray(im.convert("RGB")).astype(int)
+    h, w, _ = a.shape
+    white = a.min(axis=2) >= thr
+    seen = np.zeros((h, w), bool)
+    q = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            if white[y, x] and not seen[y, x]:
+                seen[y, x] = True
+                q.append((y, x))
+    for y in range(h):
+        for x in (0, w - 1):
+            if white[y, x] and not seen[y, x]:
+                seen[y, x] = True
+                q.append((y, x))
+    while q:
+        y, x = q.popleft()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and white[ny, nx] and not seen[ny, nx]:
+                seen[ny, nx] = True
+                q.append((ny, nx))
+    if holes_above:
+        seen[: int(h * holes_above)] |= white[: int(h * holes_above)]
+    alpha = Image.fromarray(np.where(seen, 0, 255).astype("uint8"))
+    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1))
+    out = im.convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
+def save_card(im, cid, out):
+    w, h = im.size
+    scale = 720 / max(w, h)
+    if scale < 1:
+        im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
+    im.save(f"{out}/cards/{cid}.png", optimize=True)
+
+
+NEW_CARDS = {
+    "matous": ("20.jpg", True, None, [("matous", (175, 95, 335, 255)), ("pompon", (175, 95, 335, 255)), ("pantoufle", (115, 0, 260, 145)), ("tigrou", (25, 85, 175, 235))]),
+    "mathisucre": ("21.jpg", True, 0.4, [("mathisucre", (230, 330, 1330, 1430))]),
+    "saez": ("22.jpg", True, None, [("saez", (135, 5, 375, 245))]),
+    "paco": ("23.webp", False, None, [("paco", (470, 220, 1030, 780))]),
+}
+
+if len(sys.argv) >= 7:
+    new_dir = sys.argv[6]
+    for cid, (fname, cut, holes, heads) in NEW_CARDS.items():
+        im = Image.open(f"{new_dir}/{fname}").convert("RGBA")
+        if cut:
+            im = cutout_white(im, holes_above=holes)
+        for hid, box in heads:
+            head_from(im, box, f"{OUT}/heads/{hid}.png")
+        save_card(im, cid, OUT)

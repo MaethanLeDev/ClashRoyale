@@ -51,9 +51,14 @@ export class Bot {
       return;
     }
 
+    if (p.hand.includes("paco") && p.elixir >= 7 && !this.sim.units.some((u) => u.team === team && u.card === "paco")) {
+      this.tryPlay(p, "paco", Math.random() < 0.5 ? 6 : 12, 2.5);
+      return;
+    }
+
     const threshold = this.sim.doubleElixir ? 6 : 8;
     if (p.elixir < threshold) return;
-    const attackCards = affordable.filter((c) => c !== "samy" && c !== "niels" && c !== "imad");
+    const attackCards = affordable.filter((c) => !["samy", "niels", "imad", "mathisucre", "paco"].includes(c));
     if (!attackCards.length) return;
     const card = attackCards[Math.floor(Math.random() * attackCards.length)];
     const enemy = team === 0 ? 1 : 0;
@@ -70,7 +75,7 @@ export class Bot {
       }
       return;
     }
-    const ly = card === "natis" || card === "tordeux" ? 9 : card === "tarit" ? 11 : 13.2;
+    const ly = card === "natis" || card === "tordeux" || card === "saez" ? 9 : card === "tarit" ? 11 : 13.2;
     this.tryPlay(p, card, lane + (Math.random() - 0.5), ly);
   }
 
@@ -93,10 +98,10 @@ export class Bot {
     const swarm = threats.length >= 4;
 
     const pref: CardId[] = big
-      ? ["valere", "goutier", "imad", "nazar", "niels", "tordeux", "midas"]
+      ? ["valere", "goutier", "matous", "imad", "nazar", "niels", "tordeux", "saez", "midas"]
       : swarm
-        ? ["niels", "tordeux", "imad", "valere", "midas", "goutier"]
-        : ["tordeux", "valere", "nazar", "goutier", "midas", "imad", "niels", "natis"];
+        ? ["mathisucre", "niels", "saez", "savy", "tordeux", "imad", "valere", "midas", "goutier"]
+        : ["tordeux", "valere", "saez", "matous", "nazar", "goutier", "midas", "imad", "niels", "natis"];
     if (threatHp < 400 && p.elixir < 7) return;
     const card = pref.find((c) => affordable.includes(c));
     if (!card) return;
@@ -104,6 +109,12 @@ export class Bot {
     if (card === "niels") {
       if (threats.length < 3 && !big) return;
       this.sim.play(p.id, card, Math.round(cx * 2) / 2, Math.round(cy * 2) / 2);
+      return;
+    }
+    if (card === "mathisucre") {
+      const sly = Math.max(1.5, this.local(team, cy) - 2);
+      const [x, y] = this.toAbs(team, Math.round(cx * 2) / 2, Math.round(sly * 2) / 2);
+      this.sim.play(p.id, card, x, y);
       return;
     }
     if (card === "imad") {

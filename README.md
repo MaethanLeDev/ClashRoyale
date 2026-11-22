@@ -79,15 +79,19 @@ tools/      script de préparation des photos, test de simulation
 | Midas | 3 | Lancé n'importe où, arrive à 3 |
 | Nazar | 3 | Mineur : creuse jusqu'à n'importe où |
 | Papy Niels | 3 | Sort : dégâts + gel |
+| Mathisucre | 2 | Bûche : roule droit devant sur 10 cases, écrase et repousse |
+| Les Matous | 4 | Pompon, Pantoufle et Tigrou : 3 chats rapides qui se relèvent une fois à mi-vie |
 | Valère | 4 | Anti-tank, gros dégâts |
-| Tordeux | 4 | Tireur à distance |
+| Tordeux | 4 | Tireur, même portée que les tours |
 | Imad | 4 | Bâtiment défensif (QG) |
 | Natis | 5 | Tank qui vise les bâtiments |
 | Savy | 5 | Sorcier : boules de feu à dégâts de zone |
+| Michel Saez | 5 | Lance sa mallette : elle traverse la rangée et revient (touche 2 fois) |
+| Paco | 6 | Machine à café : +1 Caféine toutes les 8,5 s pendant 70 s |
 | Tarit | 7 | Duster qui saute la rivière et vise les tours ; explose à sa mort et Tarit en sort |
 | Super Samy | 10 | Géant : rase toute tour qu'il touche |
 
-Un deck contient 8 cartes parmi 11, modifiable dans l'onglet **Deck** : toucher une carte affiche « Infos » / « Utiliser », ou glisser une carte sur une autre pour les échanger.
+Un deck contient 8 cartes parmi 15, modifiable dans l'onglet **Deck** : toucher une carte affiche « Infos » / « Utiliser », ou glisser une carte sur une autre pour les échanger.
 
 ## Comptes
 
@@ -143,7 +147,7 @@ Chaque carte a un modèle low-poly dans `client/public/models/<id>.glb`, génér
 
 ## Ajouter une carte
 
-1. Mettre la photo dans `client/public/cards/<id>.png` et une tête ronde dans `client/public/heads/<id>.png` (voir `tools/prepare_photos.py`).
+1. Mettre la photo dans `client/public/cards/<id>.png` et une tête ronde dans `client/public/heads/<id>.png` (voir `tools/prepare_photos.py`, qui détoure aussi les photos sur fond blanc).
 2. Ajouter l'entrée dans `shared/cards.ts` (stats, apparence) et l'id dans le type `CardId`.
 3. Ajouter le cadrage de la photo dans `FOCUS` (`client/src/ui.ts`).
 4. `npm run simtest` pour vérifier que l'équilibrage tient.

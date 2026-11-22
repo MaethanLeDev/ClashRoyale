@@ -1,4 +1,4 @@
-import { CARDS, DEFAULT_DECK, type CardId } from "../cards";
+import { CARDS, DEFAULT_DECK, unitValue, type CardId } from "../cards";
 import { ARENA_H, ARENA_W, DT, RIVER_Y } from "../constants";
 import type { Team } from "../protocol";
 import { Sim } from "../sim";
@@ -8,7 +8,7 @@ import type { RewardWeights } from "./styles";
 
 export type Contender =
   | { kind: "heuristic"; slowness?: number }
-  | { kind: "brain"; params: Float32Array; layers: number[]; deck: CardId[]; opts?: NeuralOptions };
+  | { kind: "brain"; params: Float32Array; layers: number[]; deck: CardId[]; cards?: CardId[]; opts?: NeuralOptions };
 
 export interface MatchStats {
   winner: Team | -1;
@@ -51,7 +51,7 @@ export function playMatch(a: Contender, b: Contender, seed: number, trace?: (tea
         return new Bot(sim, id, c.slowness ?? 0);
       }
       sim.addPlayer(id, id, team, c.deck, true);
-      const bot = new NeuralBot(sim, id, c.params, c.layers, c.opts ?? TRAIN_OPTS, rng);
+      const bot = new NeuralBot(sim, id, c.params, c.layers, c.opts ?? TRAIN_OPTS, rng, c.cards);
       if (trace) bot.onPlay = (action) => trace(team, action);
       return bot;
     });
@@ -72,7 +72,7 @@ export function playMatch(a: Contender, b: Contender, seed: number, trace?: (tea
       for (const ev of sim.events) {
         if (ev.e === "die") {
           const card = CARDS[ev.c];
-          stats.elixirLost[ev.tm] += card.count > 0 ? card.cost / card.count : 0;
+          stats.elixirLost[ev.tm] += unitValue(ev.c);
         } else if (ev.e === "deploy") {
           const card = CARDS[ev.c];
           const ly = ev.tm === 0 ? ev.y : ARENA_H - ev.y;

@@ -33,6 +33,7 @@ interface UnitView {
   spawnT: number;
   stepT: number;
   jumping: boolean;
+  propT: number;
 }
 
 interface TowerView {
@@ -114,6 +115,7 @@ export class GameView {
   private ghostRing: THREE.Mesh;
   private ghostFill: THREE.Mesh;
   private ghostHead: THREE.Sprite;
+  private ghostStrip: THREE.Mesh;
   private zones = new THREE.Group();
   private resizeObs: ResizeObserver;
   private theme: Theme;
@@ -175,7 +177,16 @@ export class GameView {
     this.ghostRing.position.y = 0.06;
     this.ghostHead = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, opacity: 0.85, depthTest: false }));
     this.ghostHead.renderOrder = 25;
-    this.ghost.add(this.ghostFill, this.ghostRing, this.ghostHead);
+    const stripGeo = new THREE.PlaneGeometry(1, 1);
+    stripGeo.translate(0, 0.5, 0);
+    this.ghostStrip = new THREE.Mesh(
+      stripGeo,
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }),
+    );
+    this.ghostStrip.rotation.x = -Math.PI / 2;
+    this.ghostStrip.position.y = 0.055;
+    this.ghostStrip.visible = false;
+    this.ghost.add(this.ghostFill, this.ghostRing, this.ghostHead, this.ghostStrip);
     this.ghost.visible = false;
     this.scene.add(this.ghost);
     this.scene.add(this.zones);
@@ -315,7 +326,7 @@ export class GameView {
         const yaw = Math.atan2(Math.cos(u.f), -Math.sin(u.f));
         v = {
           id: u.id, card, team: u.tm, model, bar, pos: target.clone(), target, yaw, hp: u.hp, mhp: u.mhp, st: u.st,
-          walk: Math.random() * 6, attackT: 0, flashT: 0, spawnT: 0, stepT: 0, jumping: false,
+          walk: Math.random() * 6, attackT: 0, flashT: 0, spawnT: 0, stepT: 0, jumping: false, propT: 0,
         };
         model.root.rotation.y = yaw;
         this.units.set(u.id, v);
@@ -372,6 +383,12 @@ export class GameView {
         const card = CARDS[ev.c];
         const p = toWorld(ev.x, ev.y);
         const col = this.colorFor(ev.tm);
+        if (card.spell?.roll) {
+          this.fx.burst(p.clone().setY(0.3), 0xc9b28a, 18, { speed: 4, size: 0.16, up: 2.5 });
+          this.fx.ring(p, col, 0.3, 2.2, 0.45, 0.8);
+          this.shake = Math.max(this.shake, 0.25);
+          break;
+        }
         if (card.kind === "spell" || card.delivery) break;
         const r = card.count > 1 ? card.spawnRadius + 0.6 : (card.unit?.radius ?? 0.5) * 1.6;
         this.fx.ring(p, col, r * 0.4, r * 1.6, 0.6, 0.9);
@@ -429,7 +446,9 @@ export class GameView {
         if (t) t.flashT = 0.12;
         const base = u ? u.pos : t ? t.pos : toWorld(ev.x, ev.y);
         const h = u ? Math.min(u.model.height * 0.55, 2.5) : t ? 2.2 : 1;
-        const colors: Record<string, number> = { finger: 0xffd54a, idea: 0xfff3a0, arrow: 0xffffff, cannon: 0xff9a3c, melee: 0xffffff, smash: 0xffd400 };
+        const colors: Record<string, number> = {
+          finger: 0xffd54a, idea: 0xfff3a0, arrow: 0xffffff, cannon: 0xff9a3c, melee: 0xffffff, smash: 0xffd400, roll: 0xc9b28a, briefcase: 0xd4af37,
+        };
         if (ev.k !== "spell") this.fx.spark(base.clone().setY(h), colors[ev.k] ?? 0xffffff, ev.k === "cannon" ? 1.4 : 0.9, 0.22);
         if (ev.k === "cannon") this.fx.burst(base.clone().setY(h), 0x555555, 4, { speed: 2, size: 0.08 });
         break;
@@ -438,6 +457,8 @@ export class GameView {
         const u = this.units.get(ev.id);
         if (u) {
           u.attackT = 0.35;
+          const b = u.card.unit?.boomerang;
+          if (b && u.model.prop) u.propT = 0.15 + (b.distance * 2) / b.speed;
           if (u.model.bulb) u.flashT = 0;
         }
         const t = this.towers.get(ev.id);
@@ -486,6 +507,28 @@ export class GameView {
         const p = toWorld(ev.x, ev.y, 0.7);
         this.fx.fireball(p, ev.r * 1.1);
         this.fx.ring(toWorld(ev.x, ev.y), 0xff9a3c, 0.3, ev.r, 0.4, 0.85);
+        break;
+      }
+      case "revive": {
+        const p = toWorld(ev.x, ev.y, 0.5);
+        this.fx.ring(toWorld(ev.x, ev.y), 0xffffff, 0.2, 1.4, 0.6, 0.9);
+        this.fx.burst(p, 0xe9f4ff, 14, { speed: 2.5, size: 0.12, up: 4, gravity: -1 });
+        this.floatText(toWorld(ev.x, ev.y, 2.2), "9 vies !", "#ffffff", 22);
+        break;
+      }
+      case "brew": {
+        const u = this.units.get(ev.id);
+        if (u) u.attackT = 0.35;
+        const p = toWorld(ev.x, ev.y, 2.2);
+        this.fx.burst(p, 0xf4f1ea, 10, { speed: 1.5, size: 0.14, up: 3, gravity: -1 });
+        const mine = ev.tm === this.opts.team;
+        if (ev.n > 0) this.floatText(toWorld(ev.x, ev.y, 3.6), `+${ev.n} ☕`, mine ? "#ffe2b8" : "#ff9a9a", mine ? 34 : 24);
+        else if (mine) this.floatText(toWorld(ev.x, ev.y, 3.6), "Caféine pleine !", "#ff9a9a", 22);
+        break;
+      }
+      case "knock": {
+        const u = this.units.get(ev.id);
+        if (u) u.flashT = 0.15;
         break;
       }
       case "tiebreak": {
@@ -660,7 +703,7 @@ export class GameView {
       if (walking) v.walk += dt * (4 + speed * 5) / Math.max(0.8, Math.sqrt(v.card.look.scale));
       const swing = walking ? Math.sin(v.walk) * 0.7 : 0;
       for (const [i, leg] of m.legs.entries()) {
-        const target = i === 0 ? swing : -swing;
+        const target = i % 2 === 0 ? swing : -swing;
         leg.rotation.x += (target - leg.rotation.x) * Math.min(1, dt * 14);
       }
       for (const [i, arm] of m.arms.entries()) {
@@ -686,6 +729,18 @@ export class GameView {
         m.inner.position.z = Math.sin(t * Math.PI) * 0.18 * v.card.look.scale;
       } else {
         m.inner.position.z = 0;
+      }
+      if (m.prop) {
+        v.propT = Math.max(0, v.propT - dt);
+        m.prop.visible = v.propT <= 0;
+      }
+      if (m.steam) {
+        v.stepT -= dt;
+        if (v.stepT <= 0 && v.st !== UNIT_STATE.deploying) {
+          v.stepT = 0.35 + Math.random() * 0.3;
+          const p = m.steam.clone().applyMatrix4(m.root.matrixWorld);
+          this.fx.smoke(p, 1, 0xf4f1ea, 0.18);
+        }
       }
       if (m.cape) m.cape.rotation.x = 0.18 + (walking ? 0.25 + Math.sin(v.walk * 2) * 0.12 : Math.sin(this.time * 1.5) * 0.05);
       if (m.bulb) {
@@ -772,6 +827,20 @@ export class GameView {
       if (p.kind === "barrel") {
         p.obj.rotation.x += dt * 9;
         p.obj.rotation.z += dt * 5;
+      }
+      if (p.kind === "briefcase") {
+        const spin = p.obj.getObjectByName("spin");
+        if (spin) spin.rotation.y += dt * 14;
+      }
+      if (p.kind === "mathisucre") {
+        const spin = p.obj.getObjectByName("spin");
+        const face = p.obj.getObjectByName("face") as THREE.Sprite | undefined;
+        if (spin) spin.rotation.x += dz / 0.55;
+        if (face) face.material.rotation += dz / 0.55;
+        if (p.trailT <= 0) {
+          p.trailT = 0.05;
+          this.fx.burst(p.pos.clone().setY(0.1), 0xc9b28a, 3, { speed: 1.6, size: 0.14, up: 1.6, life: 0.5 });
+        }
       }
       p.trailT -= dt;
       if (p.kind === "dig" && p.trailT <= 0) {
@@ -972,8 +1041,17 @@ export class GameView {
     const w = toWorld(p.x, p.y);
     this.ghost.position.lerp(w, this.ghost.userData.init ? 0.5 : 1);
     this.ghost.userData.init = true;
+    const roll = card.spell?.roll;
+    this.ghostStrip.visible = !!roll;
+    if (roll) {
+      this.ghostStrip.scale.set(roll.width, roll.distance, 1);
+      this.ghostStrip.rotation.z = this.opts.team === 0 ? 0 : Math.PI;
+      (this.ghostStrip.material as THREE.MeshBasicMaterial).color.setHex((this.state?.el ?? 0) >= card.cost ? 0xffffff : 0xff4d4d);
+    }
     const r =
-      card.kind === "spell"
+      roll
+        ? 0.6
+        : card.kind === "spell"
         ? card.spell!.radius
         : card.count > 1
           ? card.spawnRadius + card.unit!.radius

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_DECK, type CardId } from "../shared/cards";
-import { AI_CARDS, ACTION_COUNT, INPUT_SIZE, NeuralBot, paramCount, type BrainFile } from "../shared/ai/brain";
+import { brainSpace, NeuralBot, type BrainFile } from "../shared/ai/brain";
 import { Bot } from "../shared/ai/heuristic";
 import { arenaProgress, heuristicSlowness, neuralDifficulty, styleForArena } from "../shared/ai/styles";
 import type { Sim } from "../shared/sim";
@@ -23,10 +23,7 @@ function load(style: string) {
   if (hit && hit.mtime === mtime) return hit;
   try {
     const brain = JSON.parse(readFileSync(file, "utf8")) as BrainFile;
-    const ok =
-      brain.layers[0] === INPUT_SIZE && brain.layers[brain.layers.length - 1] === ACTION_COUNT &&
-      brain.params.length === paramCount(brain.layers) && JSON.stringify(brain.cards) === JSON.stringify(AI_CARDS);
-    if (!ok) {
+    if (!brainSpace(brain)) {
       console.warn(`  Cerveau ${style}.json incompatible avec cette version du jeu, bot classique utilisé.`);
       cache.set(style, null);
       return null;
@@ -51,7 +48,7 @@ export function createBot(sim: Sim, playerId: string, arena: number, trophies: n
   const style = styleForArena(arena);
   const entry = style ? load(style.id) : null;
   if (!entry) return new Bot(sim, playerId, heuristicSlowness(progress));
-  return new NeuralBot(sim, playerId, entry.params, entry.brain.layers, neuralDifficulty(arena, progress));
+  return new NeuralBot(sim, playerId, entry.params, entry.brain.layers, neuralDifficulty(arena, progress), Math.random, entry.brain.cards);
 }
 
 export function brainSummary(arena: number): { label: string; description: string } | null {
