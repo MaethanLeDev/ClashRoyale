@@ -11,7 +11,8 @@
     "simtest": "tsx tools/simtest.ts",
     "train": "tsx training/train.ts",
     "train:night": "tsx training/train.ts --style night --hours 8",
-    "train:report": "tsx training/report.ts"
+    "train:report": "tsx training/report.ts",
+    "train:inspect": "tsx training/inspect.ts"
   },
   "dependencies": {
     "three": "^0.170.0",

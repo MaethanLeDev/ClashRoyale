@@ -20,6 +20,14 @@ export interface Client {
 
 const BOT_NAMES = ["Bot Pascal", "Bot Hélène", "Bot Gérard", "Bot Sylvie", "Bot Thierry", "Bot Nadine"];
 
+/** Deck valide tel quel (8 cartes connues, sans doublon), sinon null. */
+export function validDeck(deck: unknown): CardId[] | null {
+  if (!Array.isArray(deck) || deck.length !== DECK_SIZE) return null;
+  if (!deck.every((c) => typeof c === "string" && CARD_IDS.includes(c as CardId))) return null;
+  if (new Set(deck).size !== DECK_SIZE) return null;
+  return deck.slice() as CardId[];
+}
+
 export function sanitizeDeck(deck: unknown): CardId[] {
   if (!Array.isArray(deck)) return DEFAULT_DECK.slice();
   const ids = [...new Set(deck.filter((c): c is CardId => typeof c === "string" && CARD_IDS.includes(c as CardId)))];

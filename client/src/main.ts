@@ -150,7 +150,10 @@ net.on((msg: ServerMsg) => {
         app.name = msg.account.name;
         store.set("name", app.name);
         if (msg.token) store.set("authToken", msg.token);
-        if (msg.deck && msg.deck.length === DECK_SIZE) {
+        // Connexion explicite (jeton neuf) : on reprend le deck du compte.
+        // Simple reprise de session (retour sur l'onglet, réseau mobile) : le deck local est le plus récent,
+        // et il vient d'être renvoyé au serveur par hello().
+        if (msg.token && msg.deck && msg.deck.length === DECK_SIZE) {
           app.deck = msg.deck.slice();
           store.set("deck", JSON.stringify(app.deck));
           emit("deck");

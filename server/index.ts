@@ -4,10 +4,10 @@ import { networkInterfaces } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
-import { CARDS } from "../shared/cards";
+import { CARD_IDS, CARDS, type CardId } from "../shared/cards";
 import { GAME_NAME } from "../shared/constants";
 import type { ClientMsg, ServerMsg } from "../shared/protocol";
-import { Room, sanitizeDeck, type Client } from "./room";
+import { Room, sanitizeDeck, validDeck, type Client } from "./room";
 import { isRegistered, keyOf, login, logout, profileOf, register, resume, saveDeck, type Account } from "./db";
 import { authBlocked, authFailed, authSucceeded, clientIp, closeConnection, MAX_MESSAGE_BYTES, MAX_ROOMS, MessageBudget, openConnection } from "./guard";
 
@@ -121,6 +121,23 @@ wss.on("connection", (ws: WebSocket, req) => {
   clients.set(id, client);
   client.send({ type: "welcome", id });
 
+  // Un deck refusé ne remplace plus le deck en cours par le deck par défaut sans prévenir :
+  // on garde le précédent et on explique (souvent : serveur pas à jour après l'ajout de cartes).
+  const acceptDeck = (raw: unknown) => {
+    const deck = validDeck(raw);
+    if (!deck) {
+      const unknown = Array.isArray(raw) ? raw.filter((c) => typeof c !== "string" || !CARD_IDS.includes(c as CardId)) : [];
+      console.warn(`Deck refusé pour ${client.name} :`, JSON.stringify(raw));
+      fail(
+        unknown.length
+          ? `Le serveur ne connaît pas ${unknown.length > 1 ? "ces cartes" : "cette carte"} : ${unknown.join(", ")}. Il doit être mis à jour.`
+          : "Deck invalide, le précédent est conservé.",
+      );
+      return;
+    }
+    client.deck = deck;
+    if (client.identity.kind === "account") saveDeck(client.identity.key, deck);
+  };
   const roomOf = () => (client.roomId ? rooms.get(client.roomId) : undefined);
   const fail = (msg: string | null) => msg && client.send({ type: "error", msg });
   const sendProfile = () => {
@@ -154,10 +171,7 @@ wss.on("connection", (ws: WebSocket, req) => {
     const room = roomOf();
     switch (msg.type) {
       case "hello": {
-        if (msg.deck) {
-          client.deck = sanitizeDeck(msg.deck);
-          if (client.identity.kind === "account") saveDeck(client.identity.key, client.deck);
-        }
+        if (msg.deck) acceptDeck(msg.deck);
         if (client.identity.kind === "account") {
           sendProfile();
           break;
@@ -177,8 +191,7 @@ wss.on("connection", (ws: WebSocket, req) => {
         break;
       }
       case "deck":
-        client.deck = sanitizeDeck(msg.deck);
-        if (client.identity.kind === "account") saveDeck(client.identity.key, client.deck);
+        acceptDeck(msg.deck);
         break;
       case "register": {
         const blocked = authBlocked(ip, "register");
