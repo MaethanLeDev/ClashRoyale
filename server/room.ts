@@ -4,7 +4,7 @@ import type { Mode, RoomInfo, RoomPlayer, ServerMsg, Team } from "../shared/prot
 import { Sim } from "../shared/sim";
 import { Bot } from "../shared/ai/heuristic";
 import { emoteById } from "../shared/emotes";
-import { botDeck, brainSummary, createBot, type BotLike } from "./brains";
+import { botDeck, brainSummary, createBot, practiceBot, type BotLike } from "./brains";
 import { arenaFor } from "../shared/arenas";
 import { profileOf, recordResult, type Identity } from "./db";
 
@@ -51,6 +51,8 @@ export class Room {
   private botCounter = 0;
   /** Partie contre les bots lancée depuis « Jouer » : n'apparaît pas dans les combats amicaux. */
   solo = false;
+  /** Entraînement contre un bot précis (« classic » ou id de style) : pas de trophées en jeu. */
+  practice: string | null = null;
 
   constructor(
     public id: string,
@@ -74,7 +76,7 @@ export class Room {
   info(): RoomInfo {
     const arena = arenaFor(this.topTrophies()).id;
     return {
-      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena, solo: this.solo, spectators: this.spectators.size,
+      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena, solo: this.solo, practice: this.practice, spectators: this.spectators.size,
       botStyle: brainSummary(arena),
       players: this.slots.map(({ id, name, team, bot, ready, account }) => ({ id, name, team, bot, ready, account })),
     };
@@ -239,14 +241,16 @@ export class Room {
     this.sim = sim;
     this.bots = [];
     const trophies = this.topTrophies();
-    const arena = arenaFor(trophies).id;
-    const style = brainSummary(arena);
+    const practice = this.practice ? practiceBot(this.practice) : null;
+    const arena = practice ? practice.arena : arenaFor(trophies).id;
+    const style = practice ? { label: practice.label } : brainSummary(arena);
     if (style) {
       this.slots.filter((s) => s.bot && s.id.startsWith("bot-")).forEach((s, i) => (s.name = i === 0 ? style.label : `${style.label} ${i + 1}`));
     }
     for (const s of this.slots) {
-      sim.addPlayer(s.id, s.name, s.team, s.client ? s.client.deck : s.bot ? botDeck(arena) : DEFAULT_DECK, s.bot);
-      if (s.bot) this.bots.push(createBot(sim, s.id, arena, trophies));
+      const deck = s.client ? s.client.deck : s.bot ? (practice ? practice.deck : botDeck(arena)) : DEFAULT_DECK;
+      sim.addPlayer(s.id, s.name, s.team, deck, s.bot);
+      if (s.bot) this.bots.push(practice ? practice.create(sim, s.id) : createBot(sim, s.id, arena, trophies));
     }
     this.status = "playing";
     const players = this.slots.map((s) => ({ id: s.id, name: s.name, tm: s.team, bot: s.bot }));
@@ -295,6 +299,11 @@ export class Room {
       const winner = sim.winner ?? -1;
       for (const s of this.slots) {
         if (!s.client) continue;
+        if (this.practice) {
+          // Entraînement : ni trophées ni statistiques
+          s.client.send({ type: "end", winner, crowns: sim.crowns });
+          continue;
+        }
         const opponentsAllBots = this.slots.filter((o) => o.team !== s.team).every((o) => o.bot);
         const result = winner === -1 ? "draw" : winner === s.team ? "win" : "loss";
         const { delta, profile } = recordResult(s.client.identity, result, opponentsAllBots);

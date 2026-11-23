@@ -115,6 +115,8 @@ export interface RoomInfo {
   status: "lobby" | "playing";
   arena: number;
   solo: boolean;
+  /** Entraînement contre un bot précis (pas de trophées). */
+  practice?: string | null;
   spectators: number;
   botStyle: { label: string; description: string } | null;
   players: RoomPlayer[];
@@ -131,6 +133,7 @@ export type ClientMsg =
   | { type: "mode"; mode: Mode }
   | { type: "start" }
   | { type: "solo"; mode: Mode }
+  | { type: "practice"; bot: string }
   | { type: "deck"; deck: CardId[] }
   | { type: "play"; card: CardId; x: number; y: number }
   | { type: "aim"; card: CardId | null; x?: number; y?: number }

@@ -5,8 +5,8 @@ Les bots des arènes 2 à 5 sont des petits réseaux de neurones entraînés en 
 | Arène | Bot | Style récompensé |
 |---|---|---|
 | 2 · Plage du Lac | Le Rusheur | dégâts aux tours, jeu au pont |
-| 3 · Station des Partiels | Le Mur | défense, échanges de caféine gagnants |
-| 4 · Soirée BDE | Le Devin | préshots : Papy Niels qui touche des troupes posées il y a moins de 2,5 s, et défenses posées dans un couloir calme juste avant que tu y lances une poussée |
+| 3 · Station des Partiels | Le Devin | préshots : défense posée juste avant que tu lances une poussée dans ce couloir (trop tard pour changer d'avis) et qui tient, Papy Niels lancé là où tu vas poser |
+| 4 · Soirée BDE | Le Mur | défense, échanges de caféine gagnants |
 | 5 · Volcan des Rattrapages | Le Boss | la victoire avant tout, entraîné contre tous les autres |
 
 Il y a donc **un cerveau par arène**, chacun avec son style. Ensuite, **la difficulté monte avec les trophées** dans chaque arène : temps de réaction plus court, moins d'erreurs volontaires (en bas de l'arène le bot est volontairement bridé, en haut il joue à fond). Le Boss ne triche pas : il est juste entraîné plus longtemps, contre tous les autres.

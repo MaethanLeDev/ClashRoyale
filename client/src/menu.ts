@@ -1,6 +1,6 @@
 import { ARENAS, arenaFor } from "../../shared/arenas";
 import type { Mode, RoomInfo } from "../../shared/protocol";
-import { initial, openAccount, openRoad, requireName } from "./account";
+import { initial, openAccount, openRoad, PRACTICE_BOTS, requireName, startPractice } from "./account";
 import { arenaArt, pauseArt } from "./arenaArt";
 import { DeckEditor } from "./deckEditor";
 import { icon } from "./icons";
@@ -400,6 +400,20 @@ export class Menu {
         ),
         h("div", { class: "section-title" }, h("span", {}, "Salons en cours"), count),
         list,
+        h("div", { class: "section-title" }, h("span", {}, "Entraînement"), h("span", { class: "count" }, "sans trophées")),
+        h(
+          "div",
+          { class: "practice-list" },
+          ...PRACTICE_BOTS.map((b) =>
+            h(
+              "button",
+              { class: "practice-row", onclick: () => startPractice(b.id) },
+              h("div", { class: "practice-art" }, arenaArt(b.arena, { still: true })),
+              h("div", { class: "practice-info" }, h("span", { class: "arena-num" }, `Arène ${b.arena + 1}`), h("b", {}, b.label), h("small", {}, b.description)),
+              h("span", { class: "practice-go" }, icon("swords")),
+            ),
+          ),
+        ),
       ),
     );
   }

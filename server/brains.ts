@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_DECK, type CardId } from "../shared/cards";
 import { brainSpace, NeuralBot, type BrainFile } from "../shared/ai/brain";
 import { Bot } from "../shared/ai/heuristic";
-import { arenaProgress, heuristicSlowness, neuralDifficulty, styleForArena } from "../shared/ai/styles";
+import { arenaProgress, heuristicSlowness, neuralDifficulty, styleForArena, STYLES } from "../shared/ai/styles";
 import type { Sim } from "../shared/sim";
 
 const DIR = resolve(fileURLToPath(new URL(".", import.meta.url)), "brains");
@@ -55,4 +55,27 @@ export function brainSummary(arena: number): { label: string; description: strin
   const style = styleForArena(arena);
   if (!style || !load(style.id)) return null;
   return { label: style.label, description: style.description };
+}
+
+/** Entraînement : bot choisi par le joueur (« classic » ou id de style), à pleine puissance. */
+export interface PracticeBot {
+  arena: number;
+  label: string;
+  deck: CardId[];
+  create(sim: Sim, playerId: string): BotLike;
+}
+
+export function practiceBot(id: string): PracticeBot {
+  const style = STYLES.find((s) => s.id === id);
+  const entry = style ? load(style.id) : null;
+  if (!style || !entry) {
+    // Bot classique, sans ralentissement volontaire
+    return { arena: style?.arena ?? 0, label: style ? style.label : "Bot classique", deck: DEFAULT_DECK, create: (sim, pid) => new Bot(sim, pid, 0) };
+  }
+  return {
+    arena: style.arena,
+    label: style.label,
+    deck: entry.brain.deck,
+    create: (sim, pid) => new NeuralBot(sim, pid, entry.params, entry.brain.layers, neuralDifficulty(style.arena, 1), Math.random, entry.brain.cards),
+  };
 }

@@ -93,12 +93,20 @@ export interface CardSpace {
   cards: CardId[];
   inputSize: number;
   actionCount: number;
+  /** Entrées de « lecture » de l'adversaire (couloir qu'il attaque, rythme de ses poses). */
+  reads: boolean;
 }
 
+/** Nombre d'entrées de lecture ajoutées pour les cerveaux entraînés avec les 15 cartes. */
+const READ_INPUTS = 5;
+
 export function spaceFor(cards: CardId[]): CardSpace {
+  // Les cerveaux à 15 cartes (et plus) ont les entrées de lecture ; les anciens (10 cartes) restent compatibles.
+  const reads = cards.length >= AI_CARDS.length;
   return {
     cards,
-    inputSize: 2 * ZONES * PER_ZONE + 8 + 5 + cards.length * 3 + 6 + 3 + cards.length * 2,
+    reads,
+    inputSize: 2 * ZONES * PER_ZONE + 8 + 5 + cards.length * 3 + 6 + 3 + cards.length * 2 + (reads ? READ_INPUTS : 0),
     actionCount: 1 + cards.length * ANCHORS.length,
   };
 }
@@ -133,10 +141,25 @@ export interface Memory {
   lastEnemyTime: number;
   lastEnemyPlayer: string | null;
   enemyPlays: Map<string, CardId[]>;
+  /** Pression adverse par couloir : somme des coûts posés, qui s'estompe en ~25 s. */
+  lanePressure: [number, number];
+  /** Couloir préféré de l'adversaire sur la partie (-1 gauche, +1 droite), moyenne glissante. */
+  laneBias: number;
+  pressureTime: number;
 }
 
 export function newMemory(): Memory {
-  return { lastEnemyCard: null, lastEnemyLy: 0, lastEnemyLane: 0, lastEnemyTime: -99, lastEnemyPlayer: null, enemyPlays: new Map() };
+  return {
+    lastEnemyCard: null, lastEnemyLy: 0, lastEnemyLane: 0, lastEnemyTime: -99, lastEnemyPlayer: null, enemyPlays: new Map(),
+    lanePressure: [0, 0], laneBias: 0, pressureTime: 0,
+  };
+}
+
+function decayPressure(mem: Memory, now: number) {
+  const k = Math.exp(-(now - mem.pressureTime) / 25);
+  mem.lanePressure[0] *= k;
+  mem.lanePressure[1] *= k;
+  mem.pressureTime = now;
 }
 
 export function enemyCycle(mem: Memory): Map<CardId, "inHand" | "cycling"> {
@@ -237,6 +260,19 @@ export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array, s
     out[o + i * 2 + 1] = st === "inHand" ? 1 : 0;
   }
   o += cards.length * 2;
+  if (space.reads) {
+    decayPressure(mem, sim.time);
+    out[o++] = Math.min(1, mem.lanePressure[0] / 12);
+    out[o++] = Math.min(1, mem.lanePressure[1] / 12);
+    out[o++] = mem.laneBias;
+    out[o++] = Math.exp(-since / 8);
+    // L'adversaire a-t-il de quoi lancer une poussée maintenant ? (caféine haute + carte chère revenue en main)
+    const enemies = [...sim.players.values()].filter((q) => q.team !== c.team);
+    const enemyEl = enemies.reduce((s2, q) => s2 + q.elixir, 0) / Math.max(1, enemies.length);
+    let heavyReady = 0;
+    for (const [card, st] of cycle) if (st === "inHand" && CARDS[card].cost >= 5 && enemyEl >= CARDS[card].cost - 1) heavyReady = 1;
+    out[o++] = heavyReady;
+  }
   return out;
 }
 
@@ -248,6 +284,13 @@ export function observeEvents(sim: Sim, p: SimPlayer, mem: Memory) {
     mem.lastEnemyLane = ev.x < ARENA_W / 2 ? 0 : 1;
     mem.lastEnemyTime = sim.time;
     mem.lastEnemyPlayer = ev.by;
+    const card = CARDS[ev.c];
+    if (card.kind !== "building") {
+      // Où l'adversaire met-il la pression ? (un attaquant revient souvent sur la tour qu'il a entamée)
+      decayPressure(mem, sim.time);
+      mem.lanePressure[mem.lastEnemyLane] += card.cost;
+      mem.laneBias = mem.laneBias * 0.7 + (mem.lastEnemyLane === 0 ? -1 : 1) * 0.3;
+    }
     const list = mem.enemyPlays.get(ev.by) ?? [];
     list.push(ev.c);
     if (list.length > 40) list.splice(0, list.length - 40);

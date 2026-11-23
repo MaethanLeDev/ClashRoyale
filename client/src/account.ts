@@ -1,9 +1,10 @@
 import { ARENAS, arenaFor, TROPHY_LOSS, TROPHY_WIN } from "../../shared/arenas";
+import { STYLES } from "../../shared/ai/styles";
 import { arenaArt } from "./arenaArt";
 import { icon } from "./icons";
 import { createPreview, type Preview } from "./preview";
 import { getTilt, onTilt, setTilt } from "./settings";
-import { openSheet, type Sheet } from "./sheet";
+import { closeAllSheets, openSheet, type Sheet } from "./sheet";
 import { app, hello, net, on, setName, store } from "./state";
 import { h, toast } from "./ui";
 
@@ -196,6 +197,48 @@ export function authSucceeded() {
   auth = null;
 }
 
+// ---------- Entraînement contre un bot précis ----------
+
+export interface PracticeBotInfo {
+  id: string;
+  arena: number;
+  label: string;
+  description: string;
+}
+
+/** Un bot par arène : le classique en arène 1, puis les cerveaux entraînés. */
+export const PRACTICE_BOTS: PracticeBotInfo[] = [
+  { id: "classic", arena: 0, label: "Bot classique", description: "Le bot écrit à la main, celui du Campus. Idéal pour tester un deck." },
+  ...STYLES.map((s) => ({ id: s.id, arena: s.arena, label: s.label, description: s.description })),
+].sort((a, b) => a.arena - b.arena);
+
+export function botForArena(arena: number): PracticeBotInfo | undefined {
+  return PRACTICE_BOTS.find((b) => b.arena === arena);
+}
+
+/** Partie d'entraînement 1v1 contre ce bot, à pleine puissance, sans trophées en jeu. */
+export function startPractice(botId: string) {
+  requireName(() => {
+    closeAllSheets();
+    net.send({ type: "practice", bot: botId });
+  });
+}
+
+function practiceBtn(botId: string): HTMLElement {
+  return h(
+    "button",
+    {
+      class: "chip-btn practice-btn",
+      onclick: (e: Event) => {
+        e.stopPropagation();
+        startPractice(botId);
+      },
+    },
+    icon("swords"),
+    "S'entraîner",
+  );
+}
+
 // ---------- Voie des trophées ----------
 
 export function openRoad() {
@@ -206,6 +249,7 @@ export function openRoad() {
     const unlocked = t >= a.trophies;
     const current = unlocked && (!next || t < next.trophies);
     const frac = next ? Math.max(0, Math.min(1, (t - a.trophies) / (next.trophies - a.trophies))) : 1;
+    const bot = botForArena(a.id);
     const art = h("div", { class: "road-art" }, arenaArt(a.id, { still: !current }), unlocked ? null : h("div", { class: "road-lock" }, icon("lock")));
     const step = h(
       "div",
@@ -217,7 +261,13 @@ export function openRoad() {
         h("div", { class: "road-num" }, `Arène ${a.id + 1}`, current ? h("span", { class: "chip ok" }, "Tu es ici") : null),
         h("div", { class: "road-name" }, a.name),
         h("div", { class: "road-tag" }, a.tagline),
-        h("div", { class: "road-req" }, icon("trophy"), String(a.trophies)),
+        h(
+          "div",
+          { class: "road-foot" },
+          h("span", { class: "road-req" }, icon("trophy"), String(a.trophies)),
+          bot ? h("span", { class: "road-bot" }, icon("bot"), bot.label) : null,
+        ),
+        bot ? practiceBtn(bot.id) : null,
       ),
     );
     if (unlocked) {
@@ -239,6 +289,7 @@ export function openRoad() {
     cls: "road-sheet",
     content: [
       h("div", { class: "road-summary" }, icon("trophy"), h("b", {}, String(t)), h("span", { class: "muted" }, ` · victoire +${TROPHY_WIN}, défaite −${TROPHY_LOSS} (moitié contre des bots)`)),
+      h("p", { class: "muted small road-hint" }, "« S'entraîner » lance un duel contre le bot de l'arène, à sa puissance maximale. Aucun trophée en jeu, même pour les arènes pas encore débloquées."),
       list,
     ],
   });

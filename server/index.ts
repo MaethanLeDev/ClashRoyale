@@ -5,6 +5,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { CARD_IDS, CARDS, type CardId } from "../shared/cards";
+import { STYLES } from "../shared/ai/styles";
 import { GAME_NAME } from "../shared/constants";
 import type { ClientMsg, ServerMsg } from "../shared/protocol";
 import { Room, sanitizeDeck, validDeck, type Client } from "./room";
@@ -238,6 +239,16 @@ wss.on("connection", (ws: WebSocket, req) => {
       case "solo": {
         const r = createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1", true);
         if (r) fail(r.start());
+        break;
+      }
+      case "practice": {
+        const bot = String(msg.bot ?? "");
+        if (bot !== "classic" && !STYLES.some((st) => st.id === bot)) return fail("Bot inconnu");
+        const r = createRoom(client, "1v1", true);
+        if (r) {
+          r.practice = bot;
+          fail(r.start());
+        }
         break;
       }
       case "join": {

@@ -121,7 +121,7 @@ La partie se joue dans l'arène du joueur humain le mieux classé.
 
 ## Bots entraînés par apprentissage par renforcement
 
-Les bots des arènes 2 à 5 sont des réseaux de neurones entraînés en simulation, chacun avec un style : rush, défense, préshot, et le Boss. Voir [training/README.md](training/README.md) pour lancer une nuit d'entraînement (`caffeinate -i npm run train:night` sur Mac).
+Les bots des arènes 2 à 5 sont des réseaux de neurones entraînés en simulation, chacun avec un style : rush, préshot, défense, et le Boss. Voir [training/README.md](training/README.md) pour lancer une nuit d'entraînement (`caffeinate -i npm run train:night` sur Mac).
 
 ## 2v2
 

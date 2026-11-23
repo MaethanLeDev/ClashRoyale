@@ -477,7 +477,9 @@ export class Sim {
       }
       const s = u.stats;
       if (s.brew) this.brew(u, s.brew, dt);
-      if (s.damage <= 0) {
+      // Unités qui n'attaquent jamais (machine à café de Paco). Super Samy a 0 dégât mais rase les tours :
+      // il doit continuer d'avancer.
+      if (s.damage <= 0 && !s.towerKiller) {
         u.state = UNIT_STATE.idle;
         continue;
       }

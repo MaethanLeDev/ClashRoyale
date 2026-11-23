@@ -1733,6 +1733,135 @@ input.code-input {
   height: 28px;
 }
 
+/* ---------- Entraînement contre un bot ---------- */
+
+.practice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.practice-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px 8px 8px;
+  border-radius: 18px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  color: #fff;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: transform 0.12s, background 0.15s;
+}
+
+.practice-row:active {
+  transform: scale(0.98);
+  background: var(--surf2);
+}
+
+.practice-art {
+  width: 84px;
+  aspect-ratio: 400 / 228;
+  flex: none;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.practice-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.practice-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.practice-info .arena-num {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.practice-info b {
+  font-family: var(--font-title);
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.practice-info small {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.practice-go {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffe066, #f5a516);
+  color: #4a2600;
+  box-shadow: 0 3px 0 #b06d00;
+}
+
+.practice-go .ico {
+  width: 20px;
+  height: 20px;
+}
+
+.road-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+}
+
+.road-foot .road-req {
+  margin-top: 0;
+}
+
+.road-bot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+  font-size: 12px;
+  color: #c8d2f0;
+}
+
+.road-bot .ico {
+  width: 14px;
+  height: 14px;
+}
+
+.practice-btn {
+  margin-top: 8px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  background: rgba(255, 201, 60, 0.16);
+  border-color: rgba(255, 201, 60, 0.45);
+  color: #ffd978;
+}
+
+.road-hint {
+  margin: -6px 0 14px;
+}
+
 /* ---------- Panneaux (bottom sheets) ---------- */
 
 .sheet-backdrop {

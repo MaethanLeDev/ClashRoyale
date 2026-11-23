@@ -38,6 +38,10 @@ let distinct = 0;
 let crownsFor = 0;
 let crownsAgainst = 0;
 let duration = 0;
+let preshots = 0;
+let anticip = 0;
+let punish = 0;
+let broke = 0;
 for (let g = 0; g < GAMES; g++) {
   const side: Team = (g % 2) as Team;
   const [A, B] = side === 0 ? [me, classic] : [classic, me];
@@ -51,6 +55,10 @@ for (let g = 0; g < GAMES; g++) {
   crownsFor += s.crowns[side];
   crownsAgainst += s.crowns[side === 0 ? 1 : 0];
   duration += s.time;
+  preshots += s.preshots[side];
+  anticip += s.anticipations[side];
+  punish += s.punishes[side];
+  broke += s.caughtBroke[side];
 }
 
 const total = [...usage.values()].reduce((s, v) => s + v, 0);
@@ -65,6 +73,8 @@ const pct = (n: number) => `${Math.round((n / Math.max(1, total)) * 100)} %`;
 console.log(`${b.label} · gén ${b.meta.generations} · ${b.meta.games.toLocaleString("fr-FR")} parties · score ligue ${((b.meta.leagueScore ?? 0) * 100).toFixed(0)} % · ${b.meta.updatedAt}`);
 console.log(`Contre le bot classique (${GAMES} parties) : ${Math.round((wins / GAMES) * 100)} % de victoires, ${draws} nul(s), couronnes ${(crownsFor / GAMES).toFixed(1)} – ${(crownsAgainst / GAMES).toFixed(1)}, partie moyenne ${Math.round(duration / GAMES)} s`);
 console.log(`Caféine moyenne en réserve ${(elixir / GAMES).toFixed(1)} · ${(distinct / GAMES).toFixed(1)} cartes différentes par partie (sur 8) · ${(total / GAMES).toFixed(1)} cartes posées par partie`);
+const per = (n: number) => (n / GAMES).toFixed(2);
+console.log(`Par partie : ${per(anticip)} préshots défensifs réussis · ${per(preshots)} sorts préshot · ${per(punish)} punitions d'adversaire à sec · ${per(broke)} fois pris à sec`);
 console.log(`Cartes : ${[...byCard].sort((x, y) => y[1] - x[1]).map(([c, n]) => `${c} ${pct(n)}`).join(", ")}`);
 const top = [...usage].sort((x, y) => y[1] - x[1]).slice(0, 6);
 console.log(`Coups favoris : ${top.map(([a, n]) => `${describeAction(a, space)} ${pct(n)}`).join(", ")}`);

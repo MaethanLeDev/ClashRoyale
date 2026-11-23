@@ -12,6 +12,10 @@ export interface RewardWeights {
   anticipation: number;
   aggression: number;
   variety: number;
+  /** Bonus par attaque qui punit un adversaire à sec de caféine. */
+  punish?: number;
+  /** Malus par poussée subie alors qu'on était à sec. */
+  broke?: number;
 }
 
 export interface StyleDef {
@@ -31,26 +35,26 @@ export const STYLES: StyleDef[] = [
     label: "Le Rusheur",
     description: "Pousse sans arrêt au pont et cherche les tours le plus vite possible.",
     deck: ["tarit", "natis", "matous", "midas", "nazar", "mathisucre", "valere", "niels"],
-    reward: { win: 1, crowns: 0.4, towerDealt: 1.2, towerTaken: 0.3, trade: 0.1, preshot: 0, anticipation: 0, aggression: 0.015, variety: 0.25 },
-    minutesPerNight: 75,
-  },
-  {
-    id: "defense",
-    arena: 2,
-    label: "Le Mur",
-    description: "Défend tout, gagne les échanges de caféine et punit en contre-attaque.",
-    deck: ["imad", "saez", "valere", "tordeux", "paco", "mathisucre", "natis", "niels"],
-    reward: { win: 1, crowns: 0.2, towerDealt: 0.3, towerTaken: 1.2, trade: 0.6, preshot: 0, anticipation: 0.03, aggression: 0, variety: 0.3 },
+    reward: { win: 1, crowns: 0.4, towerDealt: 1.2, towerTaken: 0.3, trade: 0.1, preshot: 0, anticipation: 0, aggression: 0.015, variety: 0.6, punish: 0.15, broke: 0.05 },
     minutesPerNight: 75,
   },
   {
     id: "preshot",
-    arena: 3,
+    arena: 2,
     label: "Le Devin",
     description: "Compte ton cycle et ta caféine, et pose sa défense ou son Papy Niels avant même que tu joues.",
     deck: ["niels", "mathisucre", "midas", "nazar", "matous", "tordeux", "imad", "savy"],
-    reward: { win: 1, crowns: 0.2, towerDealt: 0.4, towerTaken: 0.4, trade: 0.2, preshot: 0.15, anticipation: 0.12, aggression: 0, variety: 0.25 },
+    reward: { win: 1, crowns: 0.2, towerDealt: 0.2, towerTaken: 0.4, trade: 0.2, preshot: 0.5, anticipation: 0.5, aggression: 0, variety: 0.5, punish: 0.12, broke: 0.12 },
     minutesPerNight: 120,
+  },
+  {
+    id: "defense",
+    arena: 3,
+    label: "Le Mur",
+    description: "Défend tout, gagne les échanges de caféine et punit en contre-attaque.",
+    deck: ["imad", "saez", "valere", "tordeux", "paco", "mathisucre", "natis", "niels"],
+    reward: { win: 1, crowns: 0.2, towerDealt: 0.3, towerTaken: 1.2, trade: 0.6, preshot: 0, anticipation: 0.08, aggression: 0, variety: 0.6, punish: 0.08, broke: 0.15 },
+    minutesPerNight: 75,
   },
   {
     id: "boss",
@@ -58,7 +62,7 @@ export const STYLES: StyleDef[] = [
     label: "Le Boss du Volcan",
     description: "Entraîné plus longtemps que tous les autres, contre tous les autres. Aucune pitié.",
     deck: ["samy", "paco", "valere", "savy", "mathisucre", "nazar", "tordeux", "natis"],
-    reward: { win: 1.5, crowns: 0.5, towerDealt: 0.3, towerTaken: 0.3, trade: 0.1, preshot: 0.03, anticipation: 0.03, aggression: 0, variety: 0.2 },
+    reward: { win: 1.5, crowns: 0.5, towerDealt: 0.3, towerTaken: 0.3, trade: 0.1, preshot: 0.05, anticipation: 0.05, aggression: 0, variety: 0.5, punish: 0.12, broke: 0.12 },
     minutesPerNight: 210,
   },
 ];
