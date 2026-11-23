@@ -4,7 +4,9 @@ import type { Team } from "../protocol";
 import { canDeployAt, snapTile } from "../rules";
 import type { Sim, SimPlayer } from "../sim";
 
-export const AI_CARDS: CardId[] = ["goutier", "midas", "valere", "tordeux", "natis", "samy", "imad", "niels", "nazar", "tarit"];
+export const LEGACY_AI_CARDS: CardId[] = ["goutier", "midas", "valere", "tordeux", "natis", "samy", "imad", "niels", "nazar", "tarit"];
+
+export const AI_CARDS: CardId[] = [...LEGACY_AI_CARDS, "savy", "matous", "mathisucre", "saez", "paco"];
 
 export interface BrainFile {
   version: 1;
@@ -84,17 +86,45 @@ export const ANCHORS: Anchor[] = [
   },
 ];
 
-export const ACTION_COUNT = 1 + AI_CARDS.length * ANCHORS.length;
-
-export function describeAction(a: number): string {
-  if (a === 0) return "attendre";
-  const card = AI_CARDS[Math.floor((a - 1) / ANCHORS.length)];
-  return `${CARDS[card].name} → ${ANCHORS[(a - 1) % ANCHORS.length].name}`;
-}
-
 const ZONES = 4;
 const PER_ZONE = 5;
-export const INPUT_SIZE = 2 * ZONES * PER_ZONE + 8 + 5 + AI_CARDS.length * 3 + 6 + 3 + AI_CARDS.length * 2;
+
+export interface CardSpace {
+  cards: CardId[];
+  inputSize: number;
+  actionCount: number;
+}
+
+export function spaceFor(cards: CardId[]): CardSpace {
+  return {
+    cards,
+    inputSize: 2 * ZONES * PER_ZONE + 8 + 5 + cards.length * 3 + 6 + 3 + cards.length * 2,
+    actionCount: 1 + cards.length * ANCHORS.length,
+  };
+}
+
+export const SPACE = spaceFor(AI_CARDS);
+export const ACTION_COUNT = SPACE.actionCount;
+export const INPUT_SIZE = SPACE.inputSize;
+
+export function brainSpace(brain: Pick<BrainFile, "cards" | "layers" | "params">): CardSpace | null {
+  if (!Array.isArray(brain.cards) || !brain.cards.every((c) => c in CARDS)) return null;
+  const space = spaceFor(brain.cards);
+  const L = brain.layers;
+  if (L[0] !== space.inputSize || L[L.length - 1] !== space.actionCount || brain.params.length !== paramCount(L)) return null;
+  return space;
+}
+
+export function actionCard(a: number, space: CardSpace = SPACE): CardId | null {
+  if (a <= 0) return null;
+  return space.cards[Math.floor((a - 1) / ANCHORS.length)] ?? null;
+}
+
+export function describeAction(a: number, space: CardSpace = SPACE): string {
+  const card = actionCard(a, space);
+  if (!card) return "attendre";
+  return `${CARDS[card].name} → ${ANCHORS[(a - 1) % ANCHORS.length].name}`;
+}
 
 export interface Memory {
   lastEnemyCard: CardId | null;
@@ -138,7 +168,8 @@ function zoneOf(ly: number): number {
   return 3;
 }
 
-export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array): Float32Array {
+export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array, space: CardSpace = SPACE): Float32Array {
+  const cards = space.cards;
   out.fill(0);
   const c = ctxFor(sim, p);
   let o = 0;
@@ -160,10 +191,13 @@ export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array): 
   const towerOrder = (team: Team) =>
     sim.towers.filter((t) => t.team === team).sort((a, b) => (a.kind === b.kind ? a.x - b.x : a.kind === "king" ? 1 : -1));
   for (const team of [c.team, c.enemy]) {
+    // Toujours 3 valeurs par équipe (2 princesses + roi), même en 2v2 où il y a deux rois :
+    // on garde alors le plus abîmé, puisque la chute d'un seul suffit à perdre.
     const ts = towerOrder(team);
-    for (const t of ts) out[o++] = t.alive ? t.hp / t.maxHp : 0;
-    const king = ts.find((t) => t.kind === "king");
-    out[o++] = king && king.active ? 1 : 0;
+    for (const t of ts) if (t.kind === "princess") out[o++] = t.alive ? t.hp / t.maxHp : 0;
+    const kings = ts.filter((t) => t.kind === "king");
+    out[o++] = kings.length ? Math.min(...kings.map((k) => (k.alive ? k.hp / k.maxHp : 0))) : 0;
+    out[o++] = kings.some((k) => k.active) ? 1 : 0;
   }
   const enemyPlayers = [...sim.players.values()].filter((q) => q.team !== c.team);
   const enemyElixir = enemyPlayers.reduce((s, q) => s + q.elixir, 0) / Math.max(1, enemyPlayers.length);
@@ -172,14 +206,14 @@ export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array): 
   out[o++] = Math.min(1, sim.time / 180);
   out[o++] = sim.overtime ? 1 : 0;
   out[o++] = sim.doubleElixir ? 1 : 0;
-  for (let i = 0; i < AI_CARDS.length; i++) {
-    const id = AI_CARDS[i];
+  for (let i = 0; i < cards.length; i++) {
+    const id = cards[i];
     const inHand = p.hand.includes(id);
     out[o + i * 3] = inHand ? 1 : 0;
     out[o + i * 3 + 1] = inHand && p.elixir >= CARDS[id].cost ? 1 : 0;
     out[o + i * 3 + 2] = p.queue[0] === id ? 1 : 0;
   }
-  o += AI_CARDS.length * 3;
+  o += cards.length * 3;
   const since = sim.time - mem.lastEnemyTime;
   const fresh = Math.exp(-since / 2);
   out[o++] = fresh;
@@ -197,12 +231,12 @@ export function encode(sim: Sim, p: SimPlayer, mem: Memory, out: Float32Array): 
     o += 3;
   }
   const cycle = enemyCycle(mem);
-  for (let i = 0; i < AI_CARDS.length; i++) {
-    const st = cycle.get(AI_CARDS[i]);
+  for (let i = 0; i < cards.length; i++) {
+    const st = cycle.get(cards[i]);
     out[o + i * 2] = st ? 1 : 0;
     out[o + i * 2 + 1] = st === "inHand" ? 1 : 0;
   }
-  o += AI_CARDS.length * 2;
+  o += cards.length * 2;
   return out;
 }
 
@@ -227,10 +261,10 @@ export function resolveAction(
   action: number,
   cache?: Ctx,
   requireElixir = true,
+  space: CardSpace = SPACE,
 ): { card: CardId; x: number; y: number } | null {
-  if (action <= 0) return null;
-  const card = AI_CARDS[Math.floor((action - 1) / ANCHORS.length)];
-  if (!p.hand.includes(card)) return null;
+  const card = actionCard(action, space);
+  if (!card || !p.hand.includes(card)) return null;
   if (requireElixir && p.elixir < CARDS[card].cost) return null;
   const c = cache ?? ctxFor(sim, p);
   const pos = ANCHORS[(action - 1) % ANCHORS.length].resolve(c);
@@ -242,16 +276,16 @@ export function resolveAction(
   return { card, x, y };
 }
 
-export function validMask(sim: Sim, p: SimPlayer, mask: Uint8Array): Uint8Array {
+export function validMask(sim: Sim, p: SimPlayer, mask: Uint8Array, space: CardSpace = SPACE): Uint8Array {
   mask.fill(0);
   mask[0] = 1;
   const c = ctxFor(sim, p);
-  for (let ci = 0; ci < AI_CARDS.length; ci++) {
-    const card = AI_CARDS[ci];
+  for (let ci = 0; ci < space.cards.length; ci++) {
+    const card = space.cards[ci];
     if (!p.hand.includes(card)) continue;
     for (let ai = 0; ai < ANCHORS.length; ai++) {
       const a = 1 + ci * ANCHORS.length + ai;
-      if (resolveAction(sim, p, a, c, false)) mask[a] = 1;
+      if (resolveAction(sim, p, a, c, false, space)) mask[a] = 1;
     }
   }
   return mask;
@@ -295,8 +329,8 @@ export class MLP {
   }
 }
 
-export function defaultLayers(): number[] {
-  return [INPUT_SIZE, 64, 48, ACTION_COUNT];
+export function defaultLayers(space: CardSpace = SPACE): number[] {
+  return [space.inputSize, 64, 48, space.actionCount];
 }
 
 export interface NeuralOptions {
@@ -307,8 +341,9 @@ export interface NeuralOptions {
 
 export class NeuralBot {
   private mlp: MLP;
-  private input = new Float32Array(INPUT_SIZE);
-  private mask = new Uint8Array(ACTION_COUNT);
+  private input: Float32Array;
+  private mask: Uint8Array;
+  private space: CardSpace;
   private mem = newMemory();
   private timer: number;
   lastAction = 0;
@@ -321,7 +356,11 @@ export class NeuralBot {
     layers: number[],
     private opts: NeuralOptions = { think: 0.35, epsilon: 0, temperature: 0 },
     private rng: () => number = Math.random,
+    cards: CardId[] = AI_CARDS,
   ) {
+    this.space = spaceFor(cards);
+    this.input = new Float32Array(this.space.inputSize);
+    this.mask = new Uint8Array(this.space.actionCount);
     this.mlp = new MLP(layers, params);
     this.timer = opts.think * (0.5 + this.rng());
   }
@@ -337,14 +376,15 @@ export class NeuralBot {
     const action = this.decide(p);
     this.lastAction = action;
     if (action === 0) return;
-    const r = resolveAction(this.sim, p, action, undefined, false);
+    const r = resolveAction(this.sim, p, action, undefined, false, this.space);
     if (!r || p.elixir < CARDS[r.card].cost) return;
     if (!this.sim.play(p.id, r.card, r.x, r.y)) this.onPlay?.(action);
   }
 
   private decide(p: SimPlayer): number {
-    encode(this.sim, p, this.mem, this.input);
-    validMask(this.sim, p, this.mask);
+    encode(this.sim, p, this.mem, this.input, this.space);
+    validMask(this.sim, p, this.mask, this.space);
+    const ACTION_COUNT = this.space.actionCount;
     const logits = this.mlp.forward(this.input);
     if (this.opts.epsilon > 0 && this.rng() < this.opts.epsilon) {
       const valid: number[] = [];

@@ -1,4 +1,6 @@
-export type CardId = "midas" | "valere" | "samy" | "tordeux" | "natis" | "goutier" | "imad" | "niels" | "nazar" | "tarit" | "taritPilot" | "savy";
+export type CardId =
+  | "midas" | "valere" | "samy" | "tordeux" | "natis" | "goutier" | "imad" | "niels" | "nazar" | "tarit" | "taritPilot" | "savy"
+  | "matous" | "pompon" | "pantoufle" | "tigrou" | "mathisucre" | "saez" | "paco";
 
 export type CardKind = "troop" | "building" | "spell";
 
@@ -24,6 +26,9 @@ export interface UnitStats {
   deathSpawn?: CardId;
   height: number;
   lifetime?: number;
+  revive?: number;
+  boomerang?: { distance: number; speed: number; width: number };
+  brew?: { every: number; amount: number };
 }
 
 export interface SpellStats {
@@ -32,6 +37,7 @@ export interface SpellStats {
   towerDamage: number;
   freeze: number;
   delay: number;
+  roll?: { distance: number; speed: number; width: number; knockback: number };
 }
 
 export interface CardDef {
@@ -48,6 +54,7 @@ export interface CardDef {
   spawnRadius: number;
   deployAnywhere: boolean;
   delivery?: "thrown" | "dig";
+  spawns?: CardId[];
   unit?: UnitStats;
   spell?: SpellStats;
   look: {
@@ -55,11 +62,35 @@ export interface CardDef {
     accent: number;
     scale: number;
     cape?: number;
-    weapon?: "sword" | "dagger" | "finger" | "pickaxe" | "orb";
+    weapon?: "sword" | "dagger" | "finger" | "pickaxe" | "orb" | "briefcase";
     building?: boolean;
     vehicle?: boolean;
+    cat?: boolean;
+    coffee?: boolean;
   };
 }
+
+const CAT: UnitStats = {
+  hp: 300, damage: 85, hitSpeed: 1.0, firstHit: 0.3, speed: 1.9, range: 0.6, sight: 5.5,
+  radius: 0.42, mass: 2, targetsBuildingsOnly: false, height: 0.9, revive: 0.5,
+};
+
+const catCard = (id: CardId, name: string, body: number, accent: number): CardDef => ({
+  id,
+  kind: "troop",
+  hidden: true,
+  name,
+  title: `${name}, un des Matous`,
+  description: "Un des trois Matous. Quand il tombe, il se relève une fois avec la moitié de sa vie.",
+  cost: 0,
+  rarity: "épique",
+  role: "Chat",
+  count: 1,
+  spawnRadius: 0,
+  deployAnywhere: false,
+  unit: CAT,
+  look: { body, accent, scale: 0.8, cat: true },
+});
 
 export const CARDS: Record<CardId, CardDef> = {
   goutier: {
@@ -122,7 +153,7 @@ export const CARDS: Record<CardId, CardDef> = {
     kind: "troop",
     name: "Tordeux",
     title: "Tordeux le Doigt d'Or",
-    description: "Il pointe, ça part. Tire de très loin depuis son index et encaisse pas mal de coups.",
+    description: "Il pointe, ça part. Tire depuis son index d'aussi loin qu'une tour, et encaisse pas mal de coups.",
     cost: 4,
     rarity: "rare",
     role: "Distance",
@@ -130,7 +161,7 @@ export const CARDS: Record<CardId, CardDef> = {
     spawnRadius: 0,
     deployAnywhere: false,
     unit: {
-      hp: 760, damage: 150, hitSpeed: 1.2, firstHit: 0.4, speed: 1.0, range: 5.2, sight: 7,
+      hp: 760, damage: 150, hitSpeed: 1.2, firstHit: 0.4, speed: 1.0, range: 6.6, sight: 7.5,
       radius: 0.5, mass: 4, targetsBuildingsOnly: false, height: 1.5,
       projectile: { speed: 14, kind: "finger" },
     },
@@ -263,6 +294,78 @@ export const CARDS: Record<CardId, CardDef> = {
     },
     look: { body: 0x2b2d33, accent: 0xff7a1a, scale: 1, weapon: "orb" },
   },
+  matous: {
+    id: "matous",
+    kind: "troop",
+    name: "Les Matous",
+    title: "Pompon, Pantoufle et Tigrou",
+    description: "Trois chats casqués, rapides et teigneux. Ils ont neuf vies : chacun se relève une fois avec la moitié de sa vie quand on croit l'avoir eu.",
+    cost: 4,
+    rarity: "épique",
+    role: "Trio",
+    count: 3,
+    spawnRadius: 0.8,
+    deployAnywhere: false,
+    spawns: ["pompon", "pantoufle", "tigrou"],
+    unit: CAT,
+    look: { body: 0xd9853b, accent: 0xb8bcc4, scale: 0.8, cat: true },
+  },
+  pompon: catCard("pompon", "Pompon", 0xd9853b, 0xf3e3cf),
+  pantoufle: catCard("pantoufle", "Pantoufle", 0x5d6068, 0x8a8e96),
+  tigrou: catCard("tigrou", "Tigrou", 0x8a6a48, 0xe9dcc7),
+  mathisucre: {
+    id: "mathisucre",
+    kind: "spell",
+    name: "Mathisucre",
+    title: "Mathisucre la Bûche",
+    description: "Bras et jambes tendus, Mathisucre se jette au sol et roule droit devant lui. Il écrase tout sur son passage et repousse les troupes.",
+    cost: 2,
+    rarity: "légendaire",
+    role: "Rouleau",
+    count: 0,
+    spawnRadius: 0,
+    deployAnywhere: true,
+    spell: { radius: 1.9, damage: 200, towerDamage: 60, freeze: 0, delay: 0, roll: { distance: 10, speed: 7, width: 3.8, knockback: 1 } },
+    look: { body: 0x1f2a44, accent: 0xffffff, scale: 1 },
+  },
+  saez: {
+    id: "saez",
+    kind: "troop",
+    name: "Michel Saez",
+    title: "Michel Saez et sa Mallette",
+    description: "Le prof lance sa mallette : elle traverse toute la rangée, puis revient dans sa main en corrigeant tout le monde une deuxième fois.",
+    cost: 5,
+    rarity: "épique",
+    role: "Aller-retour",
+    count: 1,
+    spawnRadius: 0,
+    deployAnywhere: false,
+    unit: {
+      hp: 1000, damage: 105, hitSpeed: 2.4, firstHit: 0.5, speed: 1.0, range: 4.5, sight: 6,
+      radius: 0.5, mass: 5, targetsBuildingsOnly: false, height: 1.5,
+      boomerang: { distance: 6.5, speed: 10, width: 0.9 },
+    },
+    look: { body: 0xb29a78, accent: 0x5b3a22, scale: 1, weapon: "briefcase" },
+  },
+  paco: {
+    id: "paco",
+    kind: "building",
+    name: "Paco",
+    title: "La Machine à Café de Paco",
+    description: "Paco installe sa machine à café. Elle ne se défend pas, mais elle te sert 1 Caféine toutes les 8,5 secondes tant qu'elle tient debout.",
+    cost: 6,
+    rarity: "rare",
+    role: "Production",
+    count: 1,
+    spawnRadius: 0,
+    deployAnywhere: false,
+    unit: {
+      hp: 900, damage: 0, hitSpeed: 1, firstHit: 0, speed: 0, range: 0, sight: 0,
+      radius: 1.0, mass: 1000, targetsBuildingsOnly: false, height: 2.4, lifetime: 70,
+      brew: { every: 8.5, amount: 1 },
+    },
+    look: { body: 0x3a2a22, accent: 0xc8a27a, scale: 1, building: true, coffee: true },
+  },
   taritPilot: {
     id: "taritPilot",
     kind: "troop",
@@ -285,6 +388,16 @@ export const CARDS: Record<CardId, CardDef> = {
 };
 
 
+
+export function parentCard(id: CardId): CardDef {
+  return Object.values(CARDS).find((c) => c.spawns?.includes(id)) ?? CARDS[id];
+}
+
+export function unitValue(id: CardId): number {
+  const c = parentCard(id);
+  if (c.count <= 0) return 0;
+  return c.cost / c.count / (c.unit?.revive ? 1 + c.unit.revive : 1);
+}
 
 export const CARD_IDS = (Object.keys(CARDS) as CardId[]).filter((c) => !CARDS[c].hidden);
 

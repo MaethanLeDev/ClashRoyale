@@ -3,7 +3,7 @@ import { availableParallelism } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { defaultLayers, paramCount, type BrainFile } from "../shared/ai/brain";
+import { brainSpace, defaultLayers, paramCount, type BrainFile } from "../shared/ai/brain";
 import { mulberry32 } from "../shared/ai/match";
 import { STYLES, type StyleDef } from "../shared/ai/styles";
 import { AI_CARDS } from "../shared/ai/brain";
@@ -156,8 +156,8 @@ async function trainStyle(style: StyleDef, minutes: number, pool: Pool) {
   for (const s of STYLES) {
     if (s.id === style.id) continue;
     const b = loadBrain(s.id);
-    if (b && b.params.length === n) {
-      others.push({ kind: "brain", params: Float32Array.from(b.params), layers: b.layers, deck: b.deck });
+    if (b && brainSpace(b)) {
+      others.push({ kind: "brain", params: Float32Array.from(b.params), layers: b.layers, deck: b.deck, cards: b.cards });
       otherNames.push(s.label);
     }
   }

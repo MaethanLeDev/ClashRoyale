@@ -6,17 +6,27 @@ import { Bot } from "../shared/ai/heuristic";
 import { emoteById } from "../shared/emotes";
 import { botDeck, brainSummary, createBot, type BotLike } from "./brains";
 import { arenaFor } from "../shared/arenas";
-import { getProfile, recordResult } from "./profiles";
+import { profileOf, recordResult, type Identity } from "./db";
 
 export interface Client {
   id: string;
   name: string;
   deck: CardId[];
   roomId: string | null;
+  identity: Identity;
+  spectating: string | null;
   send(msg: ServerMsg): void;
 }
 
 const BOT_NAMES = ["Bot Pascal", "Bot Hélène", "Bot Gérard", "Bot Sylvie", "Bot Thierry", "Bot Nadine"];
+
+/** Deck valide tel quel (8 cartes connues, sans doublon), sinon null. */
+export function validDeck(deck: unknown): CardId[] | null {
+  if (!Array.isArray(deck) || deck.length !== DECK_SIZE) return null;
+  if (!deck.every((c) => typeof c === "string" && CARD_IDS.includes(c as CardId))) return null;
+  if (new Set(deck).size !== DECK_SIZE) return null;
+  return deck.slice() as CardId[];
+}
 
 export function sanitizeDeck(deck: unknown): CardId[] {
   if (!Array.isArray(deck)) return DEFAULT_DECK.slice();
@@ -34,8 +44,13 @@ export class Room {
   slots: Slot[] = [];
   sim: Sim | null = null;
   bots: BotLike[] = [];
+  spectators = new Set<Client>();
+  private match: { players: { id: string; name: string; tm: Team; bot: boolean }[]; arena: number } | null = null;
+  private lastSpectatorEmote = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
   private botCounter = 0;
+  /** Partie contre les bots lancée depuis « Jouer » : n'apparaît pas dans les combats amicaux. */
+  solo = false;
 
   constructor(
     public id: string,
@@ -53,20 +68,50 @@ export class Room {
   }
 
   private topTrophies(): number {
-    return Math.max(0, ...this.humans.map((s) => getProfile(s.name).trophies));
+    return Math.max(0, ...this.humans.map((s) => profileOf(s.client!.identity).trophies));
   }
 
   info(): RoomInfo {
     const arena = arenaFor(this.topTrophies()).id;
     return {
-      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena,
+      id: this.id, mode: this.mode, hostId: this.hostId, status: this.status, arena, solo: this.solo, spectators: this.spectators.size,
       botStyle: brainSummary(arena),
-      players: this.slots.map(({ id, name, team, bot }) => ({ id, name, team, bot })),
+      players: this.slots.map(({ id, name, team, bot, ready, account }) => ({ id, name, team, bot, ready, account })),
     };
   }
 
   broadcast(msg: ServerMsg) {
     for (const s of this.slots) s.client?.send(msg);
+  }
+
+  broadcastAll(msg: ServerMsg) {
+    this.broadcast(msg);
+    for (const c of this.spectators) c.send(msg);
+  }
+
+  addSpectator(c: Client): string | null {
+    if (this.status !== "playing" || !this.match) return "Cette partie n'est plus en cours";
+    if (this.spectators.size >= 40) return "Trop de spectateurs sur cette partie";
+    this.spectators.add(c);
+    c.spectating = this.id;
+    c.send({ type: "start", team: 0, mode: this.mode, players: this.match.players, you: c.id, arena: this.match.arena, spectator: true });
+    this.changed();
+    return null;
+  }
+
+  removeSpectator(c: Client) {
+    if (!this.spectators.delete(c)) return;
+    c.spectating = null;
+    this.lastSpectatorEmote.delete(c.id);
+    this.changed();
+  }
+
+  spectatorEmote(c: Client, emote: string) {
+    if (!this.spectators.has(c) || !this.sim || !emoteById(emote)) return;
+    const now = Date.now();
+    if (now - (this.lastSpectatorEmote.get(c.id) ?? 0) < 1500) return;
+    this.lastSpectatorEmote.set(c.id, now);
+    this.broadcastAll({ type: "emote", from: c.id, name: c.name, tm: 0, emote, spectator: true });
   }
 
   private teamCount(team: Team): number {
@@ -91,7 +136,7 @@ export class Room {
       this.slots = this.slots.filter((s) => s !== bot);
       team = bot.team;
     }
-    this.slots.push({ id: c.id, name: c.name, team, bot: false, client: c });
+    this.slots.push({ id: c.id, name: c.name, team, bot: false, ready: false, account: c.identity.kind === "account", client: c });
     c.roomId = this.id;
     this.changed();
     return null;
@@ -124,7 +169,7 @@ export class Room {
     const team = this.freeTeam();
     if (team === null) return "Le salon est plein";
     const name = BOT_NAMES[this.botCounter++ % BOT_NAMES.length];
-    this.slots.push({ id: `bot-${this.id}-${this.botCounter}`, name, team, bot: true });
+    this.slots.push({ id: `bot-${this.id}-${this.botCounter}`, name, team, bot: true, ready: true, account: false });
     this.changed();
     return null;
   }
@@ -169,10 +214,27 @@ export class Room {
     this.changed();
   }
 
+  setReady(c: Client, ready: boolean) {
+    const slot = this.slots.find((s) => s.id === c.id);
+    if (!slot || this.status !== "lobby") return;
+    slot.ready = ready;
+    this.changed();
+  }
+
+  refreshClient(c: Client) {
+    const slot = this.slots.find((s) => s.id === c.id);
+    if (!slot) return;
+    slot.name = c.name;
+    slot.account = c.identity.kind === "account";
+    this.changed();
+  }
+
   start(): string | null {
     if (this.status !== "lobby") return "Partie déjà en cours";
+    const waiting = this.humans.filter((s) => s.id !== this.hostId && !s.ready).map((s) => s.name);
+    if (waiting.length) return `En attente de : ${waiting.join(", ")}`;
     while (this.freeTeam() !== null) this.addBot();
-    const sim = new Sim();
+    const sim = new Sim(this.mode);
     if (process.env.DEV_MATCH_SECONDS) sim.timeLeft = Number(process.env.DEV_MATCH_SECONDS);
     this.sim = sim;
     this.bots = [];
@@ -188,6 +250,7 @@ export class Room {
     }
     this.status = "playing";
     const players = this.slots.map((s) => ({ id: s.id, name: s.name, tm: s.team, bot: s.bot }));
+    this.match = { players, arena };
     for (const s of this.slots) {
       s.client?.send({ type: "start", team: s.team, mode: this.mode, players, you: s.id, arena });
     }
@@ -202,11 +265,16 @@ export class Room {
     return this.sim.play(c.id, card, x, y);
   }
 
+  aim(c: Client, card: CardId | null, x: number, y: number) {
+    if (!this.sim || this.mode !== "2v2") return;
+    this.sim.setAim(c.id, card, x, y);
+  }
+
   emote(c: Client, emote: string) {
     const slot = this.slots.find((s) => s.id === c.id);
     if (!slot || !this.sim) return;
     if (!emoteById(emote)) return;
-    this.broadcast({ type: "emote", from: c.id, name: slot.name, tm: slot.team, emote });
+    this.broadcastAll({ type: "emote", from: c.id, name: slot.name, tm: slot.team, emote });
   }
 
   private tick() {
@@ -214,10 +282,14 @@ export class Room {
     if (!sim) return;
     sim.step(DT);
     for (const b of this.bots) b.update(DT);
-    const base = sim.baseSnapshot();
+    const base = { ...sim.baseSnapshot(), spec: this.spectators.size };
     sim.clearEvents();
     for (const s of this.slots) {
       if (s.client) s.client.send(sim.snapshotFor(s.id, base));
+    }
+    if (this.spectators.size) {
+      const view = sim.snapshotFor(null, base);
+      for (const c of this.spectators) c.send(view);
     }
     if (sim.phase === "ended") {
       const winner = sim.winner ?? -1;
@@ -225,17 +297,29 @@ export class Room {
         if (!s.client) continue;
         const opponentsAllBots = this.slots.filter((o) => o.team !== s.team).every((o) => o.bot);
         const result = winner === -1 ? "draw" : winner === s.team ? "win" : "loss";
-        const { delta, profile } = recordResult(s.name, result, opponentsAllBots);
+        const { delta, profile } = recordResult(s.client.identity, result, opponentsAllBots);
         s.client.send({ type: "end", winner, crowns: sim.crowns, trophies: { delta, total: profile.trophies } });
         s.client.send({ type: "profile", trophies: profile.trophies, best: profile.best, wins: profile.wins, losses: profile.losses });
       }
+      for (const c of this.spectators) {
+        c.send({ type: "end", winner, crowns: sim.crowns });
+        c.spectating = null;
+      }
+      this.spectators.clear();
       this.stop();
       this.slots = this.slots.filter((s) => !s.bot || s.id.startsWith("bot-"));
+      for (const s of this.slots) if (!s.bot) s.ready = false;
       this.changed();
     }
   }
 
   stop() {
+    for (const c of this.spectators) {
+      c.spectating = null;
+      c.send({ type: "spectateEnd" });
+    }
+    this.spectators.clear();
+    this.match = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.status = "lobby";

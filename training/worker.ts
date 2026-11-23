@@ -9,6 +9,7 @@ export interface OpponentSpec {
   params?: Float32Array;
   layers?: number[];
   deck?: CardId[];
+  cards?: CardId[];
 }
 
 export type WorkerIn =
@@ -48,7 +49,7 @@ export function gaussianInto(seed: number, out: Float32Array) {
 
 function contender(spec: OpponentSpec): Contender {
   if (spec.kind === "heuristic") return { kind: "heuristic" };
-  return { kind: "brain", params: spec.params!, layers: spec.layers!, deck: spec.deck! };
+  return { kind: "brain", params: spec.params!, layers: spec.layers!, deck: spec.deck!, cards: spec.cards };
 }
 
 parentPort?.on("message", (msg: WorkerIn) => {

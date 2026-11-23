@@ -35,10 +35,27 @@ export interface TowerDef {
 }
 
 export const TOWER_LAYOUT: TowerDef[] = [
-  { kind: "king", x: 9, y: 3, radius: 1.8, hp: 4200, range: 7, damage: 110, hitSpeed: 1.0 },
-  { kind: "princess", x: 3.5, y: 6.5, radius: 1.4, hp: 2600, range: 7.5, damage: 90, hitSpeed: 0.8 },
-  { kind: "princess", x: 14.5, y: 6.5, radius: 1.4, hp: 2600, range: 7.5, damage: 90, hitSpeed: 0.8 },
+  { kind: "king", x: 9, y: 3, radius: 1.8, hp: 4200, range: 7.5, damage: 110, hitSpeed: 1.0 },
+  { kind: "princess", x: 3.5, y: 6.5, radius: 1.4, hp: 2600, range: 8, damage: 90, hitSpeed: 0.8 },
+  { kind: "princess", x: 14.5, y: 6.5, radius: 1.4, hp: 2600, range: 8, damage: 90, hitSpeed: 0.8 },
 ];
+
+/** Écart horizontal entre les deux tours du roi en 2v2 : elles se chevauchent un peu (rayon 1,8). */
+export const KING_2V2_OFFSET = 1.4;
+
+/** En 2v2, chaque tour du roi a deux fois plus de vie (leur sort est lié : si l'une tombe, l'équipe perd). */
+export const KING_2V2_HP_MULT = 2;
+
+/** En 2v2, chaque joueur a sa tour du roi ; les deux sont imbriquées au centre. */
+export function towerLayout(mode: "1v1" | "2v2"): TowerDef[] {
+  if (mode === "1v1") return TOWER_LAYOUT;
+  const out: TowerDef[] = [];
+  for (const def of TOWER_LAYOUT) {
+    if (def.kind !== "king") out.push(def);
+    else for (const dx of [-KING_2V2_OFFSET, KING_2V2_OFFSET]) out.push({ ...def, x: def.x + dx, hp: def.hp * KING_2V2_HP_MULT });
+  }
+  return out;
+}
 
 export function mirrorY(y: number): number {
   return ARENA_H - y;

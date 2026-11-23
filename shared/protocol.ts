@@ -58,7 +58,27 @@ export type GameEvent =
   | { e: "smash"; id: number; tid: number; x: number; y: number }
   | { e: "explode"; x: number; y: number; r: number; tm: Team }
   | { e: "tiebreak" }
-  | { e: "splash"; x: number; y: number; r: number; tm: Team };
+  | { e: "splash"; x: number; y: number; r: number; tm: Team }
+  | { e: "revive"; id: number; x: number; y: number; c: CardId; tm: Team }
+  | { e: "brew"; id: number; x: number; y: number; tm: Team; by: string; n: number }
+  | { e: "knock"; id: number; x: number; y: number };
+
+/** Carte qu'un joueur tient au-dessus de l'arène (hologramme montré à son allié). */
+export interface AimSnap {
+  c: CardId;
+  x: number;
+  y: number;
+}
+
+/** Ce que l'on voit de son allié en 2v2. */
+export interface AllySnap {
+  id: string;
+  name: string;
+  bot: boolean;
+  el: number;
+  hand: CardId[];
+  aim: AimSnap | null;
+}
 
 export interface StateMsg {
   type: "state";
@@ -73,8 +93,10 @@ export interface StateMsg {
   hand: CardId[];
   next: CardId | null;
   el: number;
+  ally?: AllySnap;
   ev: GameEvent[];
   winner: Team | -1 | null;
+  spec?: number;
 }
 
 export interface RoomPlayer {
@@ -82,6 +104,8 @@ export interface RoomPlayer {
   name: string;
   team: Team;
   bot: boolean;
+  ready: boolean;
+  account: boolean;
 }
 
 export interface RoomInfo {
@@ -90,6 +114,8 @@ export interface RoomInfo {
   hostId: string;
   status: "lobby" | "playing";
   arena: number;
+  solo: boolean;
+  spectators: number;
   botStyle: { label: string; description: string } | null;
   players: RoomPlayer[];
 }
@@ -107,15 +133,26 @@ export type ClientMsg =
   | { type: "solo"; mode: Mode }
   | { type: "deck"; deck: CardId[] }
   | { type: "play"; card: CardId; x: number; y: number }
-  | { type: "emote"; emote: string };
+  | { type: "aim"; card: CardId | null; x?: number; y?: number }
+  | { type: "emote"; emote: string }
+  | { type: "ready"; ready: boolean }
+  | { type: "spectate"; roomId: string }
+  | { type: "stopSpectating" }
+  | { type: "register"; name: string; password: string }
+  | { type: "login"; name: string; password: string }
+  | { type: "resume"; token: string }
+  | { type: "logout"; token?: string };
 
 export type ServerMsg =
   | { type: "welcome"; id: string }
   | { type: "rooms"; rooms: RoomInfo[] }
   | { type: "room"; room: RoomInfo | null }
-  | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string; arena: number }
+  | { type: "start"; team: Team; mode: Mode; players: PlayerSnap[]; you: string; arena: number; spectator?: boolean }
+  | { type: "spectateEnd" }
   | { type: "profile"; trophies: number; best: number; wins: number; losses: number }
+  | { type: "auth"; account: { name: string } | null; token?: string; deck?: CardId[] }
+  | { type: "authError"; msg: string }
   | StateMsg
   | { type: "end"; winner: Team | -1; crowns: [number, number]; trophies?: { delta: number; total: number } }
-  | { type: "emote"; from: string; name: string; tm: Team; emote: string }
+  | { type: "emote"; from: string; name: string; tm: Team; emote: string; spectator?: boolean }
   | { type: "error"; msg: string };

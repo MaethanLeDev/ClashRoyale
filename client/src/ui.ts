@@ -34,6 +34,13 @@ const FOCUS: Record<CardId, string> = {
   tarit: "50% 30%",
   taritPilot: "50% 12%",
   savy: "45% 18%",
+  matous: "50% 30%",
+  pompon: "50% 30%",
+  pantoufle: "50% 30%",
+  tigrou: "50% 30%",
+  mathisucre: "40% 30%",
+  saez: "30% 8%",
+  paco: "50% 25%",
 };
 
 export function cardEl(id: CardId, opts: { showName?: boolean; small?: boolean } = {}): HTMLDivElement {
@@ -73,8 +80,7 @@ export function crownSvg(color: string): SVGSVGElement {
 }
 
 export function toast(parent: HTMLElement, msg: string, good = false) {
-  const el = h("div", { class: "toast" }, msg);
-  if (good) el.style.background = "rgba(40,140,70,0.92)";
+  const el = h("div", { class: `toast${good ? " good" : ""}`, role: "status" }, msg);
   parent.appendChild(el);
-  setTimeout(() => el.remove(), 1500);
+  setTimeout(() => el.remove(), 1800);
 }

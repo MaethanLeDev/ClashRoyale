@@ -23,7 +23,7 @@ Sur cette machine :   http://localhost:3000
 Sur le réseau local : http://192.168.1.42:3000
 ```
 
-Tout le monde ouvre l'adresse « réseau local » dans son navigateur (même Wi-Fi). Un joueur crée un salon, les autres tapent le code à 4 lettres ou cliquent dessus dans la liste. Les places vides sont remplies par des bots au lancement.
+Tout le monde ouvre l'adresse « réseau local » dans son navigateur (même Wi-Fi). « Jouer » lance directement une partie contre les bots (1v1, ou 2v2 avec un bot allié via le bouton Mode). Pour jouer entre potes : onglet **Amis**, un joueur crée un duel, les autres tapent le code à 4 lettres ou le rejoignent dans la liste. Les places vides sont remplies par des bots au lancement.
 
 Si le port 3000 est occupé ou bloqué (fréquent sous Windows avec Hyper-V, WSL ou Docker), le serveur essaie tout seul 8080, 8000, etc. et affiche le port retenu. Pour imposer un port :
 
@@ -31,6 +31,10 @@ Si le port 3000 est occupé ou bloqué (fréquent sous Windows avec Hyper-V, WSL
 - macOS / Linux : `PORT=8080 npm start`
 
 Si les autres n'arrivent pas à se connecter, accepter la fenêtre du pare-feu Windows au premier lancement (cocher « Réseaux privés »), et vérifier que le Wi-Fi est bien en profil « Privé » et pas « Public ».
+
+## Mettre le jeu en ligne
+
+Guide complet (Raspberry Pi ou Oracle Cloud gratuit + Cloudflare Tunnel sur `clashusmb.refactor-dev.fr`) : [deploy/DEPLOY.md](deploy/DEPLOY.md). En résumé : `bash deploy/setup.sh <jeton du tunnel>`.
 
 ## Développement
 
@@ -57,8 +61,13 @@ shared/     code commun client + serveur
   protocol.ts   messages réseau
 server/     serveur HTTP + WebSocket, salons, bots, profils (trophées)
 client/     interface et rendu 3D
+  src/menu.ts   pages Deck / Combat / Amis (balayage), accueil
+  src/deckEditor.ts  éditeur de deck (sélection, glisser-déposer)
+  src/lobby.ts  salon des combats amicaux
+  src/account.ts  profil, connexion, voie des trophées, caméra
+  src/arenaArt.ts  vignettes SVG animées de chaque arène
   src/game/     arène, modèles, effets, vue
-  public/       photos des cartes (cards/) et têtes rondes (heads/)
+  public/       photos des cartes (cards/), têtes rondes (heads/), logo et icônes
 tools/      script de préparation des photos, test de simulation
 ```
 
@@ -70,15 +79,31 @@ tools/      script de préparation des photos, test de simulation
 | Midas | 3 | Lancé n'importe où, arrive à 3 |
 | Nazar | 3 | Mineur : creuse jusqu'à n'importe où |
 | Papy Niels | 3 | Sort : dégâts + gel |
+| Mathisucre | 2 | Bûche : roule droit devant sur 10 cases, écrase et repousse |
+| Les Matous | 4 | Pompon, Pantoufle et Tigrou : 3 chats rapides qui se relèvent une fois à mi-vie |
 | Valère | 4 | Anti-tank, gros dégâts |
-| Tordeux | 4 | Tireur à distance |
+| Tordeux | 4 | Tireur, même portée que les tours |
 | Imad | 4 | Bâtiment défensif (QG) |
 | Natis | 5 | Tank qui vise les bâtiments |
 | Savy | 5 | Sorcier : boules de feu à dégâts de zone |
+| Michel Saez | 5 | Lance sa mallette : elle traverse la rangée et revient (touche 2 fois) |
+| Paco | 6 | Machine à café : +1 Caféine toutes les 8,5 s pendant 70 s |
 | Tarit | 7 | Duster qui saute la rivière et vise les tours ; explose à sa mort et Tarit en sort |
 | Super Samy | 10 | Géant : rase toute tour qu'il touche |
 
-Un deck contient 8 cartes parmi 11, modifiable dans « Mon deck ».
+Un deck contient 8 cartes parmi 15, modifiable dans l'onglet **Deck** : toucher une carte affiche « Infos » / « Utiliser », ou glisser une carte sur une autre pour les échanger.
+
+## Comptes
+
+On joue en invité par défaut (juste un pseudo). Depuis l'icône de profil en haut à droite, « Créer un compte » protège le pseudo par un mot de passe et garde les trophées et le deck sur le serveur : on les retrouve depuis n'importe quel PC qui se connecte au même serveur. La session reste ouverte 60 jours sur chaque navigateur.
+
+Tout est stocké dans `data/db.json` sur la machine qui héberge le serveur (mots de passe hachés avec scrypt, jamais en clair). Pour garder les comptes en changeant de machine, il suffit de copier ce fichier. Un pseudo invité qui crée un compte récupère ses trophées d'invité.
+
+Dans un salon, chaque joueur indique qu'il est **prêt** ; l'hôte ne peut lancer la partie que quand tout le monde l'est. Ouvrir l'éditeur de deck depuis le salon repasse automatiquement en « pas prêt ».
+
+## Spectateurs
+
+Les parties en cours (y compris celles contre les bots) apparaissent dans l'onglet **Amis**, section « Salons en cours », avec un bouton **Regarder**. Le spectateur voit la partie en direct (il peut rejoindre en plein match), change de côté avec « Changer de côté », et encourage avec « Encourager » : ses émotes montent depuis les bords de l'écran, chez les joueurs comme chez les autres spectateurs. Les joueurs voient le nombre de spectateurs sous le chrono. Jusqu'à 40 spectateurs par partie, une émote toutes les 1,5 s par spectateur.
 
 ## Arènes et trophées
 
@@ -98,13 +123,19 @@ La partie se joue dans l'arène du joueur humain le mieux classé.
 
 Les bots des arènes 2 à 5 sont des réseaux de neurones entraînés en simulation, chacun avec un style : rush, défense, préshot, et le Boss. Voir [training/README.md](training/README.md) pour lancer une nuit d'entraînement (`caffeinate -i npm run train:night` sur Mac).
 
+## 2v2
+
+- Chaque joueur a sa tour du roi ; les deux sont imbriquées au centre et ont chacune deux fois plus de vie qu'en 1v1. Leur sort est lié : si l'une tombe, l'autre s'effondre avec elle et l'équipe perd. Elles se réveillent ensemble dès que l'une est touchée ou qu'une tour d'angle tombe. Les cartes lancées (Midas, Nazar) partent de la tour du roi de leur joueur.
+- Au-dessus de ses propres cartes, on voit la caféine de son allié et ses 4 cartes en main (grisées s'il ne peut pas les payer).
+- Quand un allié humain tient une carte au-dessus de l'arène, un hologramme bleu de la troupe apparaît à l'endroit visé, avec son nom, et suit sa main en direct. Les bots alliés n'en affichent pas : ils jouent sans « viser ».
+
 ## Fin de partie
 
 Si les couronnes sont à égalité après les prolongations, toutes les tours perdent des PV de plus en plus vite : la première qui tombe désigne le perdant.
 
 ## Caméra
 
-Molette sur PC, ou bouton 🎥 en jeu et « Réglages → Caméra » depuis l'accueil (avec aperçu). Le réglage combine inclinaison et focale (effet « dolly zoom ») : vue quasi du dessus d'un côté, vue rapprochée en perspective de l'autre.
+Molette sur PC, ou bouton caméra en jeu et « Profil → Caméra en jeu » depuis l'accueil (avec aperçu). Le réglage combine inclinaison et focale (effet « dolly zoom ») : vue quasi du dessus d'un côté, vue rapprochée en perspective de l'autre.
 
 ## Modèles 3D
 
@@ -116,7 +147,7 @@ Chaque carte a un modèle low-poly dans `client/public/models/<id>.glb`, génér
 
 ## Ajouter une carte
 
-1. Mettre la photo dans `client/public/cards/<id>.png` et une tête ronde dans `client/public/heads/<id>.png` (voir `tools/prepare_photos.py`).
+1. Mettre la photo dans `client/public/cards/<id>.png` et une tête ronde dans `client/public/heads/<id>.png` (voir `tools/prepare_photos.py`, qui détoure aussi les photos sur fond blanc).
 2. Ajouter l'entrée dans `shared/cards.ts` (stats, apparence) et l'id dans le type `CardId`.
 3. Ajouter le cadrage de la photo dans `FOCUS` (`client/src/ui.ts`).
 4. `npm run simtest` pour vérifier que l'équilibrage tient.

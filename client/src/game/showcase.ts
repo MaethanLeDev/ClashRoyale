@@ -4,7 +4,7 @@ import { Fx } from "./fx";
 import { getTemplate, instantiateGlb } from "./glb";
 import { Glare } from "./glare";
 import { IceShell, frostPuff, shatterIce } from "./ice";
-import { createProjectileModel, createUnitModel, type UnitModel } from "./models";
+import { createProjectileModel, createRollerModel, createUnitModel, type UnitModel } from "./models";
 import { ALLY, ENEMY, headTexture } from "./textures";
 
 // Petite scène 3D de la fiche d'une carte : le modèle sur un socle qui tourne,
@@ -19,13 +19,14 @@ export interface Showcase {
 }
 
 export function hasShowcase(id: CardId): boolean {
-  return CARDS[id].kind !== "spell" || (id === "niels" && !!getTemplate("niels"));
+  return CARDS[id].kind !== "spell" || !!CARDS[id].spell?.roll || (id === "niels" && !!getTemplate("niels"));
 }
 
 export function createShowcase(container: HTMLElement, id: CardId): Showcase | null {
   if (!hasShowcase(id)) return null;
   const stage = new Stage(container);
-  const content = id === "niels" ? nielsContent(stage) : unitContent(stage, CARDS[id]);
+  const card = CARDS[id];
+  const content = id === "niels" ? nielsContent(stage) : card.spell?.roll ? rollerContent(stage, card) : unitContent(stage, card);
   stage.start(content);
   return stage;
 }
@@ -172,7 +173,7 @@ function animateUnit(card: CardDef, m: UnitModel, s: { walk: number; attackT: nu
   if (walking) s.walk += (dt * (4 + speed * 5)) / Math.max(0.8, Math.sqrt(card.look.scale));
   const swing = walking ? Math.sin(s.walk) * 0.7 : 0;
   for (const [i, leg] of m.legs.entries()) {
-    const target = i === 0 ? swing : -swing;
+    const target = i % 2 === 0 ? swing : -swing;
     leg.rotation.x += (target - leg.rotation.x) * Math.min(1, dt * 14);
   }
   for (const [i, arm] of m.arms.entries()) {
@@ -229,7 +230,7 @@ function unitContent(stage: Stage, card: CardDef): Content {
   const actors: { model: UnitModel; phase: number; walk: number; attackT: number; cycle: number; fired: Set<number> }[] = [];
   let spacing = 0;
   for (let i = 0; i < n; i++) {
-    const model = createUnitModel(card, ALLY);
+    const model = createUnitModel(card.spawns ? CARDS[card.spawns[i % card.spawns.length]] : card, ALLY);
     if (i === 0) spacing = Math.max(0.9, model.barW * 0.9);
     model.root.position.set(spots[i][0] * spacing, 0, spots[i][1] * spacing);
     stage.turntable.add(model.root);
@@ -238,9 +239,10 @@ function unitContent(stage: Stage, card: CardDef): Content {
   const { top, radius } = measure(actors.map((a) => a.model.root), Math.max(...actors.map((a) => a.model.height)));
   stage.frame(top, radius);
 
-  const shots: { obj: THREE.Object3D; t: number; from: THREE.Vector3; to: THREE.Vector3 }[] = [];
+  const shots: { obj: THREE.Object3D; t: number; from: THREE.Vector3; to: THREE.Vector3; back?: UnitModel }[] = [];
   const shoot = (m: UnitModel) => {
-    const proj = card.unit?.projectile;
+    const boomerang = !!card.unit?.boomerang;
+    const proj = boomerang ? { kind: "briefcase" } : card.unit?.projectile;
     if (!proj) return;
     const obj = createProjectileModel(proj.kind, ALLY);
     obj.scale.setScalar(card.look.scale >= 3 ? 1 : Math.max(1, card.look.scale));
@@ -250,7 +252,8 @@ function unitContent(stage: Stage, card: CardDef): Content {
     const to = from.clone().addScaledVector(fwd, radius + 3).setY(0.4);
     obj.position.copy(from);
     stage.turntable.add(obj);
-    shots.push({ obj, t: 0, from, to });
+    shots.push({ obj, t: 0, from, to, back: boomerang ? m : undefined });
+    if (boomerang && m.prop) m.prop.visible = false;
   };
 
   return {
@@ -277,14 +280,46 @@ function unitContent(stage: Stage, card: CardDef): Content {
       }
       for (let i = shots.length - 1; i >= 0; i--) {
         const s = shots[i];
-        s.t += dt / 0.45;
-        s.obj.position.lerpVectors(s.from, s.to, Math.min(1, s.t));
-        s.obj.position.y += Math.sin(Math.min(1, s.t) * Math.PI) * 0.5;
+        s.t += dt / (s.back ? 1.2 : 0.45);
+        if (s.back) {
+          s.obj.position.lerpVectors(s.from, s.to, Math.sin(Math.min(1, s.t) * Math.PI));
+          s.obj.position.y = s.from.y;
+          const spin = s.obj.getObjectByName("spin");
+          if (spin) spin.rotation.y += dt * 14;
+        } else {
+          s.obj.position.lerpVectors(s.from, s.to, Math.min(1, s.t));
+          s.obj.position.y += Math.sin(Math.min(1, s.t) * Math.PI) * 0.5;
+        }
         if (s.t >= 1) {
+          if (s.back?.prop) s.back.prop.visible = true;
           s.obj.removeFromParent();
           shots.splice(i, 1);
         }
       }
+    },
+  };
+}
+
+// ------------------------------------------------------- sorts qui roulent
+
+function rollerContent(stage: Stage, card: CardDef): Content {
+  const roller = createRollerModel(card.id, ALLY);
+  roller.position.y = 0.8;
+  roller.scale.setScalar(1.5);
+  stage.turntable.add(roller);
+  const { top, radius } = measure([roller], 1.6);
+  stage.frame(top, radius);
+  const spin = roller.getObjectByName("spin");
+  const face = roller.getObjectByName("face") as THREE.Sprite | undefined;
+
+  return {
+    update(_dt, time) {
+      const k = (time % 2.4) / 2.4;
+      const z = Math.sin(k * Math.PI * 2) * 1.1;
+      const dz = z - roller.position.z;
+      roller.position.z = z;
+      if (spin) spin.rotation.x += dz / 0.55;
+      if (face) face.material.rotation += dz / 0.55;
     },
   };
 }

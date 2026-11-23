@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CARDS, type CardDef, type CardId } from "../../../shared/cards";
 import { ARENA_H, ARENA_W, RIVER_HALF, RIVER_Y } from "../../../shared/constants";
-import type { GameEvent, StateMsg, Team } from "../../../shared/protocol";
+import type { AimSnap, GameEvent, Mode, StateMsg, Team } from "../../../shared/protocol";
 import { UNIT_STATE } from "../../../shared/protocol";
 import { nearestDeployable, POCKET_DEPTH, pocketOpen } from "../../../shared/rules";
 import { buildArena, toArena, toWorld, type Arena } from "./arena";
@@ -36,6 +36,7 @@ interface UnitView {
   spawnT: number;
   stepT: number;
   jumping: boolean;
+  propT: number;
 }
 
 interface TowerView {
@@ -77,7 +78,10 @@ export interface ViewOptions {
   arena: number;
   preview?: boolean;
   orbit?: number;
+  mode?: Mode;
   getInsets(): { top: number; bottom: number };
+  /** 2v2 : la carte tenue au-dessus de l'arène (null quand on lâche), pour l'hologramme de l'allié. */
+  onAim?(card: CardId | null, x: number, y: number): void;
   onPlay(card: CardId, x: number, y: number): void;
   onSelect(card: CardId | null, dragging: boolean): void;
   onToast(msg: string): void;
@@ -115,6 +119,7 @@ export class GameView {
   private ghostRing: THREE.Mesh;
   private ghostFill: THREE.Mesh;
   private ghostHead: THREE.Sprite;
+  private ghostStrip: THREE.Mesh;
   private zones = new THREE.Group();
   private resizeObs: ResizeObserver;
   private theme: Theme;
@@ -157,7 +162,7 @@ export class GameView {
     sun.shadow.normalBias = 0.03;
     this.scene.add(sun);
 
-    this.arena = buildArena(th);
+    this.arena = buildArena(th, opts.mode ?? "1v1");
     this.scene.add(this.arena.group);
     this.fx = new Fx(this.scene);
 
@@ -176,7 +181,16 @@ export class GameView {
     this.ghostRing.position.y = 0.06;
     this.ghostHead = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, opacity: 0.85, depthTest: false }));
     this.ghostHead.renderOrder = 25;
-    this.ghost.add(this.ghostFill, this.ghostRing, this.ghostHead);
+    const stripGeo = new THREE.PlaneGeometry(1, 1);
+    stripGeo.translate(0, 0.5, 0);
+    this.ghostStrip = new THREE.Mesh(
+      stripGeo,
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }),
+    );
+    this.ghostStrip.rotation.x = -Math.PI / 2;
+    this.ghostStrip.position.y = 0.055;
+    this.ghostStrip.visible = false;
+    this.ghost.add(this.ghostFill, this.ghostRing, this.ghostHead, this.ghostStrip);
     this.ghost.visible = false;
     this.scene.add(this.ghost);
     this.scene.add(this.zones);
@@ -272,6 +286,7 @@ export class GameView {
 
   applyState(msg: StateMsg) {
     this.state = msg;
+    this.setAllyAim(msg.ally?.aim ?? null, msg.ally?.name ?? "");
     const seen = new Set<number>();
     for (const t of msg.towers) {
       seen.add(t.id);
@@ -281,6 +296,9 @@ export class GameView {
         const model = createTowerModel(t.k, this.colorFor(t.tm), facing);
         const pos = toWorld(t.x, t.y);
         model.group.position.copy(pos);
+        // 2v2 : deux tours du roi imbriquées ; la seconde est un peu plus haute et en retrait
+        const twin = t.k === "king" && [...this.towers.values()].some((o) => o.kind === "king" && o.team === t.tm);
+        if (twin) model.group.scale.set(1, 1.07, 0.94);
         this.scene.add(model.group);
         const bar = new Bar(t.k === "king" ? 2.6 : 2.0, this.colorFor(t.tm), true);
         this.scene.add(bar.group);
@@ -321,7 +339,7 @@ export class GameView {
         const yaw = Math.atan2(Math.cos(u.f), -Math.sin(u.f));
         v = {
           id: u.id, card, team: u.tm, model, bar, pos: target.clone(), target, yaw, hp: u.hp, mhp: u.mhp, st: u.st,
-          walk: Math.random() * 6, attackT: 0, flashT: 0, spawnT: 0, stepT: 0, jumping: false,
+          walk: Math.random() * 6, attackT: 0, flashT: 0, spawnT: 0, stepT: 0, jumping: false, propT: 0,
         };
         model.root.rotation.y = yaw;
         this.units.set(u.id, v);
@@ -379,6 +397,12 @@ export class GameView {
         const card = CARDS[ev.c];
         const p = toWorld(ev.x, ev.y);
         const col = this.colorFor(ev.tm);
+        if (card.spell?.roll) {
+          this.fx.burst(p.clone().setY(0.3), 0xc9b28a, 18, { speed: 4, size: 0.16, up: 2.5 });
+          this.fx.ring(p, col, 0.3, 2.2, 0.45, 0.8);
+          this.shake = Math.max(this.shake, 0.25);
+          break;
+        }
         if (card.kind === "spell" || card.delivery) break;
         const r = card.count > 1 ? card.spawnRadius + 0.6 : (card.unit?.radius ?? 0.5) * 1.6;
         this.fx.ring(p, col, r * 0.4, r * 1.6, 0.6, 0.9);
@@ -447,7 +471,9 @@ export class GameView {
         if (t) t.flashT = 0.12;
         const base = u ? u.pos : t ? t.pos : toWorld(ev.x, ev.y);
         const h = u ? Math.min(u.model.height * 0.55, 2.5) : t ? 2.2 : 1;
-        const colors: Record<string, number> = { finger: 0xffd54a, idea: 0xfff3a0, arrow: 0xffffff, cannon: 0xff9a3c, melee: 0xffffff, smash: 0xffd400 };
+        const colors: Record<string, number> = {
+          finger: 0xffd54a, idea: 0xfff3a0, arrow: 0xffffff, cannon: 0xff9a3c, melee: 0xffffff, smash: 0xffd400, roll: 0xc9b28a, briefcase: 0xd4af37,
+        };
         if (ev.k !== "spell") this.fx.spark(base.clone().setY(h), colors[ev.k] ?? 0xffffff, ev.k === "cannon" ? 1.4 : 0.9, 0.22);
         if (ev.k === "cannon") this.fx.burst(base.clone().setY(h), 0x555555, 4, { speed: 2, size: 0.08 });
         break;
@@ -456,6 +482,8 @@ export class GameView {
         const u = this.units.get(ev.id);
         if (u) {
           u.attackT = 0.35;
+          const b = u.card.unit?.boomerang;
+          if (b && u.model.prop) u.propT = 0.15 + (b.distance * 2) / b.speed;
           if (u.model.bulb) u.flashT = 0;
         }
         const t = this.towers.get(ev.id);
@@ -504,6 +532,28 @@ export class GameView {
         const p = toWorld(ev.x, ev.y, 0.7);
         this.fx.fireball(p, ev.r * 1.1);
         this.fx.ring(toWorld(ev.x, ev.y), 0xff9a3c, 0.3, ev.r, 0.4, 0.85);
+        break;
+      }
+      case "revive": {
+        const p = toWorld(ev.x, ev.y, 0.5);
+        this.fx.ring(toWorld(ev.x, ev.y), 0xffffff, 0.2, 1.4, 0.6, 0.9);
+        this.fx.burst(p, 0xe9f4ff, 14, { speed: 2.5, size: 0.12, up: 4, gravity: -1 });
+        this.floatText(toWorld(ev.x, ev.y, 2.2), "9 vies !", "#ffffff", 22);
+        break;
+      }
+      case "brew": {
+        const u = this.units.get(ev.id);
+        if (u) u.attackT = 0.35;
+        const p = toWorld(ev.x, ev.y, 2.2);
+        this.fx.burst(p, 0xf4f1ea, 10, { speed: 1.5, size: 0.14, up: 3, gravity: -1 });
+        const mine = ev.tm === this.opts.team;
+        if (ev.n > 0) this.floatText(toWorld(ev.x, ev.y, 3.6), `+${ev.n} ☕`, mine ? "#ffe2b8" : "#ff9a9a", mine ? 34 : 24);
+        else if (mine) this.floatText(toWorld(ev.x, ev.y, 3.6), "Caféine pleine !", "#ff9a9a", 22);
+        break;
+      }
+      case "knock": {
+        const u = this.units.get(ev.id);
+        if (u) u.flashT = 0.15;
         break;
       }
       case "tiebreak": {
@@ -686,7 +736,7 @@ export class GameView {
       if (walking) v.walk += dt * (4 + speed * 5) / Math.max(0.8, Math.sqrt(v.card.look.scale));
       const swing = walking ? Math.sin(v.walk) * 0.7 : 0;
       for (const [i, leg] of m.legs.entries()) {
-        const target = i === 0 ? swing : -swing;
+        const target = i % 2 === 0 ? swing : -swing;
         leg.rotation.x += (target - leg.rotation.x) * Math.min(1, dt * 14);
       }
       for (const [i, arm] of m.arms.entries()) {
@@ -712,6 +762,18 @@ export class GameView {
         m.inner.position.z = Math.sin(t * Math.PI) * 0.18 * v.card.look.scale;
       } else {
         m.inner.position.z = 0;
+      }
+      if (m.prop) {
+        v.propT = Math.max(0, v.propT - dt);
+        m.prop.visible = v.propT <= 0;
+      }
+      if (m.steam) {
+        v.stepT -= dt;
+        if (v.stepT <= 0 && v.st !== UNIT_STATE.deploying) {
+          v.stepT = 0.35 + Math.random() * 0.3;
+          const p = m.steam.clone().applyMatrix4(m.root.matrixWorld);
+          this.fx.smoke(p, 1, 0xf4f1ea, 0.18);
+        }
       }
       if (m.cape) m.cape.rotation.x = 0.18 + (walking ? 0.25 + Math.sin(v.walk * 2) * 0.12 : Math.sin(this.time * 1.5) * 0.05);
       if (m.bulb) {
@@ -800,6 +862,20 @@ export class GameView {
         p.obj.rotation.x += dt * 9;
         p.obj.rotation.z += dt * 5;
       }
+      if (p.kind === "briefcase") {
+        const spin = p.obj.getObjectByName("spin");
+        if (spin) spin.rotation.y += dt * 14;
+      }
+      if (p.kind === "mathisucre") {
+        const spin = p.obj.getObjectByName("spin");
+        const face = p.obj.getObjectByName("face") as THREE.Sprite | undefined;
+        if (spin) spin.rotation.x += dz / 0.55;
+        if (face) face.material.rotation += dz / 0.55;
+        if (p.trailT <= 0) {
+          p.trailT = 0.05;
+          this.fx.burst(p.pos.clone().setY(0.1), 0xc9b28a, 3, { speed: 1.6, size: 0.14, up: 1.6, life: 0.5 });
+        }
+      }
       p.trailT -= dt;
       if (p.kind === "dig" && p.trailT <= 0) {
         p.trailT = 0.07;
@@ -851,6 +927,7 @@ export class GameView {
     this.floaters = keep;
 
     this.updateGhost();
+    this.updateHolo(dt);
   }
 
   // ---------- Input ----------
@@ -978,24 +1055,37 @@ export class GameView {
     const active = card && (this.dragging || this.tapActive || this.pointer.inside);
     if (!card || !active) {
       this.ghost.visible = false;
+      this.sendAim(null);
       return;
     }
     if (this.dragging && this.isOverHud(this.pointer.x, this.pointer.y)) {
       this.ghost.visible = false;
+      this.sendAim(null);
       return;
     }
     const raw = this.pick(this.pointer.x, this.pointer.y);
     const p = raw ? this.placementFor(card, raw) : null;
     if (!p) {
       this.ghost.visible = false;
+      this.sendAim(null);
       return;
     }
+    this.sendAim({ c: card.id, x: p.x, y: p.y });
     this.ghost.visible = true;
     const w = toWorld(p.x, p.y);
     this.ghost.position.lerp(w, this.ghost.userData.init ? 0.5 : 1);
     this.ghost.userData.init = true;
+    const roll = card.spell?.roll;
+    this.ghostStrip.visible = !!roll;
+    if (roll) {
+      this.ghostStrip.scale.set(roll.width, roll.distance, 1);
+      this.ghostStrip.rotation.z = this.opts.team === 0 ? 0 : Math.PI;
+      (this.ghostStrip.material as THREE.MeshBasicMaterial).color.setHex((this.state?.el ?? 0) >= card.cost ? 0xffffff : 0xff4d4d);
+    }
     const r =
-      card.kind === "spell"
+      roll
+        ? 0.6
+        : card.kind === "spell"
         ? card.spell!.radius
         : card.count > 1
           ? card.spawnRadius + card.unit!.radius
@@ -1014,6 +1104,126 @@ export class GameView {
     const hs = card.id === "samy" ? 2.4 : 1.1;
     this.ghostHead.scale.setScalar(hs);
     this.ghostHead.position.y = card.kind === "spell" ? 3 : 1.4 + hs * 0.3 + Math.sin(this.time * 5) * 0.08;
+  }
+
+  // ---------- 2v2 : visée partagée et hologramme de l'allié ----------
+
+  private aimSent: AimSnap | null = null;
+  private aimAt = 0;
+
+  private sendAim(aim: AimSnap | null) {
+    if (!this.opts.onAim) return;
+    const prev = this.aimSent;
+    if (!aim) {
+      if (prev) {
+        this.aimSent = null;
+        this.opts.onAim(null, 0, 0);
+      }
+      return;
+    }
+    const now = performance.now();
+    const moved = !prev || prev.c !== aim.c || Math.hypot(prev.x - aim.x, prev.y - aim.y) > 0.2;
+    if (!moved || (prev && prev.c === aim.c && now - this.aimAt < 100)) return;
+    this.aimSent = aim;
+    this.aimAt = now;
+    this.opts.onAim(aim.c, aim.x, aim.y);
+  }
+
+  private holo: {
+    group: THREE.Group;
+    model: THREE.Group | null;
+    ring: THREE.Mesh;
+    fill: THREE.Mesh;
+    beam: THREE.Mesh;
+    label: HTMLElement;
+    card: CardId | null;
+    target: THREE.Vector3;
+    fade: number;
+  } | null = null;
+
+  private holoMat = new THREE.MeshBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.6, depthWrite: false });
+
+  private ensureHolo() {
+    if (this.holo) return this.holo;
+    const group = new THREE.Group();
+    const flat = (geo: THREE.BufferGeometry, opacity: number) => {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x6fe3ff, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+      m.rotation.x = -Math.PI / 2;
+      return m;
+    };
+    const fill = flat(new THREE.CircleGeometry(1, 40), 0.2);
+    fill.position.y = 0.05;
+    const ring = flat(new THREE.RingGeometry(0.9, 1, 48), 0.85);
+    ring.position.y = 0.07;
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(1, 1, 3.2, 32, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x6fe3ff, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+    );
+    beam.position.y = 1.6;
+    group.add(fill, ring, beam);
+    group.visible = false;
+    this.scene.add(group);
+    const label = document.createElement("div");
+    label.className = "holo-tag";
+    label.style.display = "none";
+    this.opts.overlay.appendChild(label);
+    this.holo = { group, model: null, ring, fill, beam, label, card: null, target: new THREE.Vector3(), fade: 0 };
+    return this.holo;
+  }
+
+  private setAllyAim(aim: AimSnap | null, name: string) {
+    if (!aim && !this.holo) return;
+    const h = this.ensureHolo();
+    if (!aim) {
+      h.card = null;
+      return;
+    }
+    const card = CARDS[aim.c];
+    if (h.card !== aim.c || !h.group.visible) {
+      if (h.model) h.group.remove(h.model);
+      h.model = null;
+      if (card.unit) {
+        const m = createUnitModel(card, ALLY);
+        m.root.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = this.holoMat;
+        });
+        Object.assign(m.head.material, { opacity: 0.7, transparent: true });
+        m.root.rotation.y = this.opts.team === 0 ? Math.PI : 0;
+        h.model = m.root;
+        h.group.add(m.root);
+      }
+      const r =
+        card.kind === "spell" ? card.spell!.radius : card.count > 1 ? card.spawnRadius + card.unit!.radius : Math.max(0.7, card.unit!.radius * 1.3);
+      for (const o of [h.ring, h.fill]) o.scale.setScalar(r);
+      h.beam.scale.set(r, 1, r);
+      h.label.textContent = `${name} · ${card.name}`;
+      if (!h.group.visible) h.group.position.copy(toWorld(aim.x, aim.y));
+    }
+    h.card = aim.c;
+    h.target.copy(toWorld(aim.x, aim.y));
+  }
+
+  private updateHolo(dt: number) {
+    const h = this.holo;
+    if (!h) return;
+    h.fade = Math.max(0, Math.min(1, h.fade + (h.card ? dt * 6 : -dt * 5)));
+    h.group.visible = h.fade > 0;
+    h.label.style.display = h.group.visible ? "" : "none";
+    if (!h.group.visible) return;
+    h.group.position.lerp(h.target, Math.min(1, dt * 14));
+    const flicker = 0.85 + Math.sin(this.time * 31) * 0.05 + Math.sin(this.time * 7.3) * 0.1;
+    this.holoMat.opacity = 0.6 * h.fade * flicker;
+    (h.ring.material as THREE.MeshBasicMaterial).opacity = 0.85 * h.fade;
+    (h.fill.material as THREE.MeshBasicMaterial).opacity = (0.12 + Math.sin(this.time * 4) * 0.05) * h.fade;
+    (h.beam.material as THREE.MeshBasicMaterial).opacity = 0.14 * h.fade;
+    h.ring.rotation.z += dt * 1.2;
+    if (h.model) h.model.position.y = 0.15 + Math.sin(this.time * 3) * 0.08;
+    tmpV.copy(h.group.position).setY(h.model ? 3.4 : 2.2).project(this.camera);
+    const w = this.renderer.domElement.clientWidth;
+    const hh = this.renderer.domElement.clientHeight;
+    h.label.style.left = `${((tmpV.x + 1) / 2) * w}px`;
+    h.label.style.top = `${((1 - tmpV.y) / 2) * hh}px`;
+    h.label.style.opacity = String(h.fade);
   }
 
   private showZones(card: CardDef) {
@@ -1067,6 +1277,8 @@ export class GameView {
     this.resizeObs.disconnect();
     this.fx.clear();
     for (const f of this.floaters) f.el.remove();
+    this.holo?.label.remove();
+    if (this.aimSent) this.opts.onAim?.(null, 0, 0);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

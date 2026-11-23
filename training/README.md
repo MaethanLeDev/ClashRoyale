@@ -65,7 +65,9 @@ Il affiche (et écrit dans `training/rapport.md`) :
 
 ## Ajouter une carte sans casser les cerveaux
 
-Les cerveaux connaissent une liste figée de cartes (`AI_CARDS` dans `shared/ai/brain.ts`). Une nouvelle carte (comme Savy) est jouable tout de suite par les humains, et les bots voient ses troupes sur le terrain comme n'importe quelle unité. Pour que les bots apprennent à la jouer : l'ajouter à `AI_CARDS` et à un deck dans `shared/ai/styles.ts`, puis relancer une nuit avec `--fresh` (les anciens cerveaux deviennent incompatibles).
+Chaque cerveau enregistre la liste de cartes qu'il connaît (champ `cards` du fichier). Le serveur s'adapte à cette liste : un ancien cerveau entraîné sur 10 cartes continue de jouer avec son ancien deck même quand le jeu en compte plus.
+
+Les nouveaux entraînements utilisent `AI_CARDS` dans `shared/ai/brain.ts` (15 cartes : les 10 d'origine + Savy, les Matous, Mathisucre, Michel Saez et Paco) et les decks de `shared/ai/styles.ts`, qui contiennent déjà les nouvelles cartes. Un cerveau entraîné sur l'ancienne liste ne peut pas être prolongé : la prochaine nuit repart de zéro automatiquement (`--fresh` revient au même). Pour une future carte : l'ajouter à `AI_CARDS` et à un deck, puis relancer une nuit.
 
 ## Ce que ça produit
 
