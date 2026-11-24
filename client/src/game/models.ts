@@ -535,6 +535,19 @@ function createCoffeeModel(card: CardDef, color: number): UnitModel {
 }
 
 export function createRollerModel(id: CardDef["id"], color: number): THREE.Group {
+  const glb = instantiateGlb(id, color);
+  if (glb?.spin) {
+    // Modèle Blender : le corps tourne dans 'spin', la photo reste posée sur 'head_anchor'.
+    const g = new THREE.Group();
+    g.add(glb.scene);
+    const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(id, color), alphaTest: 0.5 }));
+    head.name = "face";
+    head.scale.set(0.95, 0.95, 1);
+    head.position.copy(glb.headPos);
+    g.add(head);
+    g.scale.setScalar(1.05);
+    return g;
+  }
   const g = new THREE.Group();
   const spin = new THREE.Group();
   spin.name = "spin";
@@ -585,8 +598,8 @@ function createGlbUnitModel(card: CardDef, color: number): UnitModel | null {
   const inner = new THREE.Group();
   root.add(inner);
   inner.add(parts.scene);
-  const fixed = card.look.building || card.look.vehicle;
-  const headSize = card.look.building ? 1.25 : card.look.vehicle ? 1.15 : card.id === "goutier" ? 1.05 : 1.0;
+  const fixed = card.look.building || card.look.vehicle || card.look.cat;
+  const headSize = card.look.building ? 1.25 : card.look.vehicle ? 1.15 : card.look.cat ? 0.8 : card.id === "goutier" ? 1.05 : 1.0;
   const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTexture(card.id, color), alphaTest: 0.5 }));
   head.scale.set(headSize, headSize, 1);
   head.position.copy(parts.headPos);
@@ -597,7 +610,7 @@ function createGlbUnitModel(card: CardDef, color: number): UnitModel | null {
   const top = Math.max(parts.height, parts.headPos.y + headSize / 2);
   return {
     root, inner, head, legs: parts.legs, arms: parts.arms, mats: trackMats(inner), cape: parts.cape,
-    bulb: parts.bulb, wheels: parts.wheels.length ? parts.wheels : undefined,
+    bulb: parts.bulb, wheels: parts.wheels.length ? parts.wheels : undefined, prop: parts.prop, steam: parts.steam,
     height: top * vs, barY: (top + 0.15) * vs + 0.15,
     barW: card.look.building ? 1.6 : card.look.vehicle ? 1.7 : Math.min(2.4, 0.6 + vs * 0.45),
   };

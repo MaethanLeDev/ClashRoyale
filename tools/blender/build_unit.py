@@ -53,7 +53,7 @@ def srgb_to_linear(c):
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
-def material(name, hex_color, metallic=0.0, roughness=0.8, emissive=0.0):
+def material(name, hex_color, metallic=0.0, roughness=0.8, emissive=0.0, alpha=1.0):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     if not getattr(m, "use_nodes", True):
         m.use_nodes = True
@@ -65,6 +65,10 @@ def material(name, hex_color, metallic=0.0, roughness=0.8, emissive=0.0):
     if emissive:
         bsdf.inputs["Emission Color"].default_value = (r, g, b, 1)
         bsdf.inputs["Emission Strength"].default_value = emissive
+    if alpha < 1:
+        bsdf.inputs["Alpha"].default_value = alpha
+        if hasattr(m, "surface_render_method"):
+            m.surface_render_method = "BLENDED"
     return m
 
 
@@ -143,6 +147,10 @@ class Builder:
         else:
             bpy.ops.mesh.primitive_cone_add(vertices=verts, radius1=r, radius2=r2, depth=depth)
         return self._finish(name, mat, parent, loc, rot, smooth, 0)
+
+    def ico(self, name, r, loc, mat, parent=None, scale=(1, 1, 1), subdiv=1, rot=(0, 0, 0)):
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=subdiv, radius=r, scale=scale)
+        return self._finish(name, mat, parent, loc, rot, False, 0)
 
     def sphere(self, name, r, loc, mat, parent=None, scale=(1, 1, 1), seg=10, rings=6, smooth=True):
         bpy.ops.mesh.primitive_uv_sphere_add(segments=seg, ring_count=rings, radius=r, scale=scale)
@@ -537,6 +545,277 @@ def build_tarit(b):
     b.empty("head_anchor", (0, 0.3, 2.45))
 
 
+
+# ------------------------------------------------------- Papy Niels (sort)
+# Le sort n'a pas d'unité en jeu : ce modèle sert à sa fiche. Papy Niels
+# dans son rocking-chair ; l'Empty 'rock' est le pivot du balancement.
+
+def build_niels(b):
+    wood = material("niels_wood", 0x7a4a26, roughness=0.8)
+    wood_dark = material("niels_wood_dark", 0x5a3418, roughness=0.85)
+    cardigan = material("niels_cardigan", 0x9c8b6e, roughness=0.95)
+    shirt = material("niels_shirt", 0xf2efe8, roughness=0.7)
+    trousers = material("niels_trousers", 0x5a5f66, roughness=0.9)
+    slipper = material("niels_slipper", 0x8a2f2a, roughness=0.95)
+    plaid = material("niels_plaid", 0xa8322d, roughness=0.95)
+    plaid_line = material("niels_plaid_line", 0x2a3b5a, roughness=0.95)
+    skin = material("niels_skin", 0xe0b089, roughness=0.7)
+    cane = material("niels_cane", 0x3b2414, roughness=0.6)
+    brass = material("niels_brass", 0xc9a227, metallic=0.8, roughness=0.3)
+    team = material("team", 0x3b8cff, roughness=0.6)
+
+    root = b.root
+    rock = b.empty("rock", (0, 0, 0))
+    b.root = rock
+
+    # Patins arrondis : segments le long d'un arc.
+    R, cz = 1.3, 1.34
+    for side, x in (("L", -0.32), ("R", 0.32)):
+        for i in range(7):
+            a = math.radians(-36 + i * 12)
+            y, z = R * math.sin(a), cz - R * math.cos(a)
+            b.box(f"rocker_{side}{i}", (0.06, 0.29, 0.06), (x, y, z), wood_dark, rot=(a, 0, 0), bevel=0.01)
+        for j, y in enumerate((-0.24, 0.24)):
+            b.cyl(f"post_{side}{j}", 0.03, 0.46, (x, y, 0.3), wood, verts=6)
+    b.box("seat", (0.72, 0.62, 0.07), (0, 0, 0.55), wood, bevel=0.02)
+    for side, x in (("L", -0.32), ("R", 0.32)):
+        b.box(f"back_post_{side}", (0.06, 0.06, 0.95), (x, 0.36, 1.0), wood, rot=(-0.16, 0, 0), bevel=0.01)
+        b.box(f"arm_rest_{side}", (0.09, 0.56, 0.05), (x * 1.18, -0.02, 0.8), wood, bevel=0.01)
+        b.cyl(f"spindle_{side}", 0.025, 0.24, (x * 1.18, -0.24, 0.67), wood, verts=6)
+    for i, z in enumerate((0.8, 1.05, 1.3)):
+        b.box(f"slat_{i}", (0.62, 0.04, 0.07 if i < 2 else 0.12), (0, 0.32 + (z - 0.55) * 0.16, z), wood_dark, rot=(-0.16, 0, 0), bevel=0.01)
+
+    # Papy assis.
+    b.box("hips", (0.42, 0.3, 0.14), (0, 0.08, 0.66), trousers, bevel=0.03)
+    b.box("torso", (0.48, 0.3, 0.5), (0, 0.14, 0.93), cardigan, rot=(-0.14, 0, 0), bevel=0.05)
+    b.box("shirt", (0.14, 0.03, 0.36), (0, -0.015, 0.97), shirt, rot=(-0.14, 0, 0), bevel=0)
+    for i, z in enumerate((0.8, 0.92, 1.04)):
+        b.sphere(f"button_{i}", 0.022, (0.09, -0.02 + (z - 0.8) * 0.14, z), brass, seg=6, rings=3, smooth=False)
+    b.cyl("scarf", 0.18, 0.09, (0, 0.17, 1.18), team, verts=10)
+    b.box("scarf_tail", (0.09, 0.03, 0.28), (-0.1, -0.02, 1.02), team, rot=(-0.14, 0, 0.1), bevel=0.01)
+    for side, x in (("L", -0.11), ("R", 0.11)):
+        b.box(f"thigh_{side}", (0.17, 0.44, 0.16), (x, -0.13, 0.66), trousers, bevel=0.03)
+        b.box(f"shin_{side}", (0.15, 0.15, 0.5), (x, -0.36, 0.38), trousers, bevel=0.03)
+        b.box(f"slipper_{side}", (0.18, 0.3, 0.1), (x, -0.42, 0.1), slipper, bevel=0.04)
+    b.box("plaid", (0.52, 0.46, 0.05), (0, -0.16, 0.76), plaid, bevel=0.02)
+    for i, x in enumerate((-0.12, 0.12)):
+        b.box(f"plaid_v{i}", (0.04, 0.47, 0.055), (x, -0.16, 0.76), plaid_line, bevel=0)
+    b.box("plaid_h", (0.53, 0.04, 0.055), (0, -0.2, 0.76), plaid_line, bevel=0)
+    b.box("plaid_fold", (0.52, 0.05, 0.22), (0, -0.39, 0.66), plaid, bevel=0.02)
+    for side, sx in (("L", -1), ("R", 1)):
+        b.cyl(f"upperarm_{side}", 0.075, 0.3, (sx * 0.31, 0.16, 0.98), cardigan, verts=8)
+        b.box(f"forearm_{side}", (0.13, 0.34, 0.12), (sx * 0.36, -0.02, 0.86), cardigan, bevel=0.03)
+        b.sphere(f"hand_{side}", 0.075, (sx * 0.36, -0.22, 0.86), skin, seg=8, rings=5)
+    # Canne posée contre l'accoudoir droit.
+    b.cyl("cane", 0.025, 0.95, (0.52, -0.3, 0.47), cane, rot=(0.12, -0.12, 0), verts=6)
+    b.box("cane_handle", (0.05, 0.18, 0.05), (0.58, -0.3, 0.95), cane, rot=(0.12, 0, 0), bevel=0.02)
+    b.empty("head_anchor", (0, 0.14, 1.5))
+
+    b.root = root
+
+
+# ------------------------------------------------------- Bloc de glace
+# Coquille normalisée : base à z = 0, ~1 de haut, ~1 de large. Le jeu la
+# met à l'échelle de l'unité ou de la tour gelée.
+
+def build_ice(b):
+    shell = material("ice_shell", 0xbfe9ff, roughness=0.05, alpha=0.38, emissive=0.15)
+    spike = material("ice_spike", 0xd6f3ff, roughness=0.05, alpha=0.6, emissive=0.2)
+    frost = material("ice_frost", 0xf2fbff, roughness=0.6, alpha=0.85)
+    b.ico("shell", 0.5, (0, 0, 0.52), shell, scale=(1.0, 1.0, 1.06), subdiv=1)
+    b.cyl("frost", 0.55, 0.07, (0, 0, 0.035), frost, verts=12, smooth=False)
+    spikes = [(0, 0.2, 0.25), (72, 0.35, 0.3), (144, 0.15, 0.22), (216, 0.4, 0.28), (288, 0.25, 0.24),
+              (36, 0.75, 0.2), (180, 0.7, 0.22), (300, 0.8, 0.18)]
+    for i, (deg, z, size) in enumerate(spikes):
+        a = math.radians(deg)
+        e = math.radians(35 if z > 0.6 else 10)
+        r = 0.47
+        loc = (math.cos(a) * r, math.sin(a) * r, z)
+        b.cyl(f"spike_{i}", size * 0.4, size * 1.6, loc, spike, rot=(math.pi / 2 - e, 0, a + math.pi / 2),
+              verts=5, r2=0.0, smooth=False)
+    for i, (dx, dy, h) in enumerate(((0.08, 0.05, 0.3), (-0.12, 0.02, 0.22), (0.02, -0.12, 0.18))):
+        b.cyl(f"crown_{i}", h * 0.35, h, (dx, dy, 1.0 + h * 0.3), spike, rot=(dx * 2, dy * 2, 0),
+              verts=5, r2=0.0, smooth=False)
+
+
+
+# ------------------------------------------------------------- Les Matous
+# Trois chats chevaliers (le casque est sur la photo). Quatre pattes :
+# leg_FL, leg_FR, leg_BR, leg_BL (le jeu bouge les diagonales ensemble),
+# la queue 'tail' se balance comme un bras.
+
+def build_cat(b, prefix, fur_hex, light_hex, stripes_hex=None):
+    fur = material(f"{prefix}_fur", fur_hex, roughness=0.95)
+    light = material(f"{prefix}_light", light_hex, roughness=0.95)
+    steel = material("cat_steel", 0xb8bcc4, metallic=0.85, roughness=0.3)
+    gold = material("cat_gold", 0xd4af37, metallic=0.8, roughness=0.3)
+    nose = material("cat_nose", 0xd98c8c, roughness=0.7)
+    team = material("team", 0x3b8cff, roughness=0.5)
+    b.sphere("body", 0.22, (0, 0.02, 0.43), fur, scale=(1, 2.0, 0.95), seg=12, rings=8)
+    b.sphere("chest", 0.17, (0, -0.2, 0.4), light, scale=(1, 1.3, 1.1), seg=10, rings=6)
+    b.sphere("neck", 0.15, (0, -0.3, 0.6), fur, seg=10, rings=6)
+    if stripes_hex is not None:
+        stripe = material(f"{prefix}_stripe", stripes_hex, roughness=0.95)
+        for i, y in enumerate((-0.12, 0.04, 0.2)):
+            b.box(f"stripe_{i}", (0.3, 0.05, 0.05), (0, y, 0.63), stripe, rot=(0.0, 0, 0), bevel=0.02)
+    # Armure : plastron, caparaçon à la couleur de l'équipe, liseré doré.
+    b.sphere("breastplate", 0.19, (0, -0.33, 0.48), steel, scale=(1.05, 0.7, 1.0), seg=10, rings=6, smooth=False)
+    b.box("caparison", (0.48, 0.5, 0.05), (0, 0.06, 0.63), team, bevel=0.02)
+    for side, x in (("L", -0.24), ("R", 0.24)):
+        b.box(f"flap_{side}", (0.03, 0.5, 0.22), (x, 0.06, 0.52), team, bevel=0.01)
+        b.box(f"trim_{side}", (0.035, 0.5, 0.035), (x, 0.06, 0.41), gold, bevel=0)
+    b.cyl("collar", 0.13, 0.05, (0, -0.32, 0.66), team, rot=(0.5, 0, 0), verts=10)
+    b.sphere("bell", 0.045, (0, -0.43, 0.56), gold, seg=8, rings=5)
+    # Pattes (pivot à l'épaule / la hanche).
+    for name, x, y in (("FL", -0.11, -0.24), ("FR", 0.11, -0.24), ("BR", 0.11, 0.22), ("BL", -0.11, 0.22)):
+        leg = b.empty(f"leg_{name}", (x, y, 0.36))
+        b.cyl(f"limb_{name}", 0.065, 0.3, (0, 0, -0.15), fur, leg, verts=8)
+        b.sphere(f"paw_{name}", 0.075, (0, -0.03, -0.33), light, leg, scale=(1, 1.3, 0.6), seg=8, rings=5)
+        if name.startswith("F"):
+            b.cyl(f"greave_{name}", 0.072, 0.1, (0, 0, -0.2), steel, leg, verts=8)
+    # Queue en trois segments qui remontent vers l'arrière.
+    tail = b.empty("tail", (0, 0.42, 0.5))
+    b.cyl("tail_0", 0.055, 0.22, (0, 0.08, 0.06), fur, tail, rot=(-0.9, 0, 0), verts=8)
+    b.cyl("tail_1", 0.052, 0.24, (0, 0.17, 0.27), fur, tail, rot=(-0.25, 0, 0), verts=8)
+    b.cyl("tail_2", 0.05, 0.2, (0, 0.15, 0.48), fur, tail, rot=(0.35, 0, 0), verts=8)
+    b.sphere("tail_tip", 0.07, (0, 0.11, 0.6), team, tail, seg=8, rings=5)
+    b.empty("head_anchor", (0, -0.32, 0.9))
+
+
+def build_pompon(b):
+    build_cat(b, "pompon", 0xd9853b, 0xf3e3cf)
+
+
+def build_pantoufle(b):
+    build_cat(b, "pantoufle", 0x5d6068, 0x8a8e96)
+
+
+def build_tigrou(b):
+    build_cat(b, "tigrou", 0x8a6a48, 0xe9dcc7, stripes_hex=0x4a3420)
+
+
+# ------------------------------------------------------------ Michel Saez
+# Veste en tweed beige, chemise bleue ; la mallette est l'objet 'prop'
+# (le jeu la cache pendant qu'elle vole).
+
+def build_saez(b):
+    p = base_mats("saez", 0xb29a78, pants=0x2b2f3a, shoes=0x3b2414, body_rough=0.95)
+    shirt = material("saez_shirt", 0x8fb3e0, roughness=0.7)
+    lapel = material("saez_lapel", 0x9c8564, roughness=0.95)
+    patch = material("saez_patch", 0x6b4a2c, roughness=0.9)
+    leather = material("saez_leather", 0x5b3a22, roughness=0.55)
+    dark = material("saez_dark", 0x2a1a10, roughness=0.6)
+    gold = material("saez_gold", 0xd4af37, metallic=0.8, roughness=0.3)
+    white = material("saez_white", 0xf4f1ea, roughness=0.7)
+    h = humanoid(b, p, torso=(0.5, 0.32, 0.46), shoulder=0.34, belt=False, collar=False)
+    b.box("coat_skirt", (0.52, 0.34, 0.2), (0, 0, 0.5), p["body"], bevel=0.02)
+    b.box("shirt", (0.18, 0.03, 0.42), (0, -0.165, 0.83), shirt, bevel=0)
+    b.box("tie", (0.07, 0.035, 0.3), (0, -0.18, 0.86), p["team"], bevel=0)
+    b.box("tie_knot", (0.08, 0.04, 0.06), (0, -0.18, 1.0), p["team"], bevel=0.01)
+    for side, x in (("L", -1), ("R", 1)):
+        b.box(f"lapel_{side}", (0.08, 0.03, 0.34), (x * 0.12, -0.175, 0.88), lapel, rot=(0, x * 0.25, 0), bevel=0)
+        b.box(f"button_{side}", (0.04, 0.02, 0.04), (x * 0.06, -0.17, 0.62), dark, bevel=0)
+        b.box(f"elbow_{side}", (0.05, 0.1, 0.12), (x * 0.075, 0.03, -0.28), patch, h[f"arm_{side}"], bevel=0.02)
+    b.box("pocket_square", (0.08, 0.02, 0.05), (-0.16, -0.17, 0.95), white, bevel=0)
+    b.cyl("collar", 0.17, 0.06, (0, 0, 1.04), shirt, verts=10)
+    # Mallette en cuir tenue à la main droite.
+    prop = b.empty("prop", (0, -0.08, -0.5), h["arm_R"])
+    b.box("case", (0.46, 0.13, 0.32), (0, 0, -0.17), leather, prop, bevel=0.03)
+    b.box("case_band", (0.47, 0.135, 0.04), (0, 0, -0.08), dark, prop, bevel=0)
+    b.box("handle", (0.16, 0.03, 0.03), (0, 0, 0.04), dark, prop, bevel=0.01)
+    for x in (-0.07, 0.07):
+        b.box(f"handle_post_{'L' if x < 0 else 'R'}", (0.025, 0.025, 0.05), (x, 0, 0.0), dark, prop, bevel=0)
+        b.box(f"latch_{'L' if x < 0 else 'R'}", (0.05, 0.02, 0.04), (x * 1.8, -0.07, -0.04), gold, prop, bevel=0)
+
+
+# ------------------------------------------------------------- Mathisucre
+# Sort qui roule : le corps est allongé le long de X et tourne dans
+# l'Empty 'spin' ; la photo est posée sur 'head_anchor' (hors de 'spin').
+
+def build_mathisucre(b):
+    hoodie = material("mathisucre_hoodie", 0x1f2a44, roughness=0.85)
+    jeans = material("mathisucre_jeans", 0x2d3b55, roughness=0.85)
+    skin = material("mathisucre_skin", 0xe0b089, roughness=0.7)
+    white = material("mathisucre_white", 0xf2f2f2, roughness=0.7)
+    pocket = material("mathisucre_pocket", 0x18213a, roughness=0.9)
+    team = material("team", 0x3b8cff, roughness=0.5)
+    spin = b.empty("spin", (0, 0, 0))
+    along = (0, math.pi / 2, 0)
+    b.cyl("torso", 0.3, 1.0, (0.15, 0, 0), hoodie, spin, rot=along, verts=12)
+    b.sphere("hood", 0.27, (-0.38, 0, 0.05), hoodie, spin, scale=(0.7, 1, 1), seg=10, rings=6)
+    b.box("pocket", (0.4, 0.06, 0.2), (0.3, -0.28, -0.05), pocket, spin, bevel=0.02)
+    for z in (-0.06, 0.06):
+        b.cyl(f"string_{'L' if z < 0 else 'R'}", 0.014, 0.2, (-0.25, -0.28, z), white, spin, rot=along, verts=4)
+    b.cyl("waistband", 0.31, 0.1, (0.6, 0, 0), team, spin, rot=along, verts=12)
+    for side, z in (("L", -0.14), ("R", 0.14)):
+        b.cyl(f"jeans_{side}", 0.12, 0.9, (1.1, 0, z), jeans, spin, rot=along, verts=8)
+        b.box(f"shoe_{side}", (0.16, 0.3, 0.18), (1.66, -0.05, z), white, spin, bevel=0.04)
+    for side, z in (("L", -0.2), ("R", 0.2)):
+        b.cyl(f"sleeve_{side}", 0.09, 0.8, (-0.95, 0, z), hoodie, spin, rot=along, verts=8)
+        b.cyl(f"cuff_{side}", 0.095, 0.08, (-1.33, 0, z), team, spin, rot=along, verts=8)
+        b.sphere(f"hand_{side}", 0.1, (-1.45, 0, z), skin, spin, seg=8, rings=5)
+    b.empty("head_anchor", (-0.5, 0, 0))
+
+
+# ------------------------------------------------- Machine à café de Paco
+# Bâtiment : 'bulb' clignote quand elle sert un café, 'steam' est d'où
+# sort la vapeur. Le cigare de Paco est dessiné sur sa photo (textures.ts).
+
+def build_paco(b):
+    wood = material("paco_wood", 0x3a2a22, roughness=0.8)
+    top = material("paco_top", 0xc8a27a, roughness=0.6)
+    chrome = material("paco_chrome", 0xd9dee6, metallic=0.85, roughness=0.2)
+    dark = material("paco_dark", 0x4a505a, metallic=0.6, roughness=0.4)
+    black = material("paco_black", 0x15161a, roughness=0.6)
+    copper = material("paco_copper", 0xc07a43, metallic=0.85, roughness=0.3)
+    cup = material("paco_cup", 0xf4f1ea, roughness=0.5)
+    coffee = material("paco_coffee", 0x3b2416, roughness=0.3)
+    beans = material("paco_beans", 0x5a3418, roughness=0.8)
+    glass = material("paco_glass", 0xbfe0ff, roughness=0.05, alpha=0.35)
+    cigar = material("paco_cigar", 0x6b4226, roughness=0.9)
+    ash = material("paco_ash", 0x9a9a9a, roughness=1.0)
+    ember = material("paco_ember", 0xff5a1a, emissive=2.5)
+    bulb = material("paco_bulb", 0x7cff8a, emissive=0.6)
+    team = material("team", 0x3b8cff, roughness=0.5)
+    F = -1
+    # Comptoir.
+    b.box("counter", (1.8, 1.2, 0.9), (0, 0, 0.45), wood, bevel=0.03)
+    b.box("counter_top", (1.92, 1.3, 0.08), (0, 0, 0.94), top, bevel=0.02)
+    b.box("stripe", (1.82, 1.22, 0.14), (0, 0, 0.72), team, bevel=0)
+    for i, x in enumerate((-0.6, 0, 0.6)):
+        b.box(f"panel_{i}", (0.5, 0.03, 0.42), (x, F * 0.61, 0.36), top, bevel=0.01)
+    # Machine à espresso.
+    b.box("machine", (1.1, 0.7, 0.72), (0, 0.15, 1.34), chrome, bevel=0.06)
+    b.box("machine_base", (1.16, 0.76, 0.1), (0, 0.15, 1.03), dark, bevel=0.02)
+    b.box("machine_top", (1.16, 0.76, 0.1), (0, 0.15, 1.75), dark, bevel=0.03)
+    b.cyl("dome", 0.22, 0.2, (0.25, 0.25, 1.9), copper, verts=12, r2=0.12)
+    b.sphere("dome_knob", 0.06, (0.25, 0.25, 2.03), copper, seg=8, rings=5)
+    for side, x in (("L", -0.28), ("R", 0.28)):
+        b.cyl(f"group_{side}", 0.09, 0.14, (x, F * 0.24, 1.14), dark, verts=10)
+        b.box(f"portafilter_{side}", (0.05, 0.26, 0.04), (x, F * 0.4, 1.08), black, bevel=0.01)
+        b.cyl(f"cup_{side}", 0.08, 0.13, (x, F * 0.28, 1.04), cup, verts=12, r2=0.065)
+        b.cyl(f"coffee_{side}", 0.072, 0.01, (x, F * 0.28, 1.105), coffee, verts=12)
+    b.cyl("gauge", 0.1, 0.03, (0.33, F * 0.205, 1.52), cup, rot=(math.pi / 2, 0, 0), verts=14)
+    b.box("needle", (0.012, 0.01, 0.08), (0.35, F * 0.222, 1.54), black, rot=(0, -0.6, 0), bevel=0)
+    b.cyl("steam_wand", 0.02, 0.32, (0.62, F * 0.05, 1.22), chrome, rot=(0.2, 0, 0), verts=6)
+    b.sphere("bulb", 0.07, (-0.33, F * 0.21, 1.55), bulb, seg=10, rings=6)
+    # Moulin à café avec sa trémie de grains.
+    b.box("grinder", (0.26, 0.26, 0.36), (-0.72, 0.15, 1.16), black, bevel=0.03)
+    b.cyl("hopper", 0.14, 0.3, (-0.72, 0.15, 1.5), glass, verts=10, r2=0.08)
+    b.cyl("beans", 0.12, 0.18, (-0.72, 0.15, 1.42), beans, verts=10, r2=0.09)
+    # Cendrier et cigare posés sur le comptoir.
+    b.cyl("ashtray", 0.12, 0.04, (0.7, F * 0.4, 1.0), dark, verts=10)
+    b.cyl("cigar_rest", 0.03, 0.22, (0.72, F * 0.4, 1.04), cigar, rot=(0, math.pi / 2, 0.3), verts=8)
+    b.cyl("cigar_ash", 0.031, 0.04, (0.83, F * 0.43, 1.04), ash, rot=(0, math.pi / 2, 0.3), verts=8)
+    b.sphere("cigar_ember", 0.025, (0.855, F * 0.44, 1.04), ember, seg=6, rings=4)
+    # Enseigne : un grain de café sur un panneau.
+    b.box("sign", (1.0, 0.05, 0.36), (0, F * 0.63, 0.66), black, bevel=0.01)
+    b.sphere("sign_bean", 0.1, (0, F * 0.66, 0.66), top, scale=(1.4, 0.35, 1.0), seg=12, rings=6)
+    b.box("sign_groove", (0.03, 0.03, 0.17), (0, F * 0.695, 0.66), black, rot=(0, 0.25, 0), bevel=0)
+    b.empty("steam", (0, 0.15, 1.95))
+    b.empty("head_anchor", (0, 0.15, 2.65))
+
+
 BUILDERS = {
     "valere": build_valere,
     "goutier": build_goutier,
@@ -549,6 +828,14 @@ BUILDERS = {
     "taritPilot": build_taritPilot,
     "imad": build_imad,
     "tarit": build_tarit,
+    "niels": build_niels,
+    "ice": build_ice,
+    "pompon": build_pompon,
+    "pantoufle": build_pantoufle,
+    "tigrou": build_tigrou,
+    "saez": build_saez,
+    "mathisucre": build_mathisucre,
+    "paco": build_paco,
 }
 
 

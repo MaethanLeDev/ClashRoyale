@@ -13,6 +13,7 @@ interface Particle {
   spin: number;
   mat: THREE.Material & { opacity: number };
   onUpdate?: (p: Particle, k: number) => void;
+  onEnd?: () => void;
 }
 
 const sphereGeo = new THREE.IcosahedronGeometry(1, 0);
@@ -130,6 +131,15 @@ export class Fx {
     return s;
   }
 
+  /** Objet animé à la main pendant `life` secondes (k va de 0 à 1). */
+  custom(obj: THREE.Object3D, life: number, onUpdate: (k: number) => void, onEnd?: () => void) {
+    const mat = new THREE.MeshBasicMaterial() as THREE.Material & { opacity: number };
+    this.add({
+      obj, vel: new THREE.Vector3(), life, max: life, gravity: 0, grow: 0, baseScale: 1, fade: false, spin: 0, mat,
+      onUpdate: (_p, k) => onUpdate(k), onEnd,
+    });
+  }
+
   update(dt: number) {
     const keep: Particle[] = [];
     for (const p of this.list) {
@@ -137,6 +147,7 @@ export class Fx {
       if (p.life <= 0) {
         this.scene.remove(p.obj);
         p.mat.dispose();
+        p.onEnd?.();
         continue;
       }
       const k = 1 - p.life / p.max;
@@ -160,6 +171,7 @@ export class Fx {
     for (const p of this.list) {
       this.scene.remove(p.obj);
       p.mat.dispose();
+      p.onEnd?.();
     }
     this.list = [];
   }

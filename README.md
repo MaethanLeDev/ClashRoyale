@@ -143,7 +143,7 @@ Chaque carte a un modèle low-poly dans `client/public/models/<id>.glb`, génér
 
 - Tout régénérer : dans Blender, *Scripting → Open → build_unit.py → Run Script*, ou `blender -b -P tools/blender/build_unit.py -- all`
 - Une seule carte : `-- valere` ; ré-exporter une collection retouchée à la main : `-- valere export`
-- Conventions lues par le jeu : personnage face à −Y, pieds à z = 0, environ 1,9 de haut ; pivots `leg_L`, `leg_R`, `arm_L`, `arm_R` (hanche / épaule), `head_anchor` (photo ronde), `cape`, `bulb` (bâtiment), `wheel_*` (véhicule) ; matériau `team` recoloré à la couleur de l'équipe.
+- Conventions lues par le jeu : personnage face à −Y, pieds à z = 0, environ 1,9 de haut ; pivots `leg_L`, `leg_R`, `arm_L`, `arm_R` (hanche / épaule), `head_anchor` (photo ronde), `cape`, `bulb` (bâtiment), `wheel_*` (véhicule), `leg_FL/FR/BR/BL` et `tail` (quadrupède), `prop` (objet lancé, caché en vol), `steam` (vapeur), `spin` (sort qui roule) ; matériau `team` recoloré à la couleur de l'équipe.
 
 ## Ajouter une carte
 

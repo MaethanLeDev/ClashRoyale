@@ -11,12 +11,17 @@ import { CARDS, type CardId } from "../../../shared/cards";
 //   bulb : mesh dont l'émission clignote (bâtiment)
 //   wheel_* : pivots des roues (véhicule), origine sur l'axe
 
-const templates = new Map<CardId, THREE.Object3D>();
+const templates = new Map<string, THREE.Object3D>();
+const EXTRA = ["ice"];
+
+export function getTemplate(name: string): THREE.Object3D | undefined {
+  return templates.get(name);
+}
 
 export function loadModels(): Promise<void> {
   const loader = new GLTFLoader();
   return Promise.all(
-    (Object.keys(CARDS) as CardId[]).map(
+    [...Object.keys(CARDS), ...EXTRA].map(
       (id) =>
         new Promise<void>((resolve) => {
           loader.load(
@@ -40,6 +45,9 @@ export interface GlbParts {
   cape?: THREE.Mesh;
   bulb?: THREE.Mesh;
   wheels: THREE.Object3D[];
+  prop?: THREE.Object3D;
+  steam?: THREE.Vector3;
+  spin?: THREE.Object3D;
   headPos: THREE.Vector3;
   height: number;
 }
@@ -66,8 +74,12 @@ export function instantiateGlb(id: CardId, teamColor: number): GlbParts | null {
     mesh.receiveShadow = true;
   });
   const find = (n: string) => scene.getObjectByName(n) ?? undefined;
-  const legs = [find("leg_L"), find("leg_R")].filter((o): o is THREE.Object3D => !!o);
-  const arms = [find("arm_L"), find("arm_R")].filter((o): o is THREE.Object3D => !!o);
+  // Quadrupède : pattes dans l'ordre FL, FR, BR, BL (le jeu bouge les diagonales ensemble).
+  const legNames = find("leg_FL") ? ["leg_FL", "leg_FR", "leg_BR", "leg_BL"] : ["leg_L", "leg_R"];
+  const legs = legNames.map(find).filter((o): o is THREE.Object3D => !!o);
+  const arms = [find("arm_L") ?? find("tail"), find("arm_R")].filter((o): o is THREE.Object3D => !!o);
+  const prop = find("prop");
+  const spin = find("spin");
   const cape = find("cape") as THREE.Mesh | undefined;
   const bulb = find("bulb") as THREE.Mesh | undefined;
   const wheels: THREE.Object3D[] = [];
@@ -77,6 +89,8 @@ export function instantiateGlb(id: CardId, teamColor: number): GlbParts | null {
   scene.updateMatrixWorld(true);
   const anchor = find("head_anchor");
   const headPos = anchor ? anchor.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.4, 0);
+  const steamObj = find("steam");
+  const steam = steamObj?.getWorldPosition(new THREE.Vector3());
   const box = new THREE.Box3().setFromObject(scene);
-  return { scene, legs, arms, cape, bulb, wheels, headPos, height: Math.max(box.max.y, headPos.y + 0.5) };
+  return { scene, legs, arms, cape, bulb, wheels, prop, steam, spin, headPos, height: Math.max(box.max.y, headPos.y + 0.5) };
 }

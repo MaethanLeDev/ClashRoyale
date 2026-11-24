@@ -6,6 +6,9 @@ import { UNIT_STATE } from "../../../shared/protocol";
 import { nearestDeployable, POCKET_DEPTH, pocketOpen } from "../../../shared/rules";
 import { buildArena, toArena, toWorld, type Arena } from "./arena";
 import { Fx } from "./fx";
+import { cigarTip, hasCigar } from "./cigar";
+import { Glare } from "./glare";
+import { frostPuff, IceShell, shatterIce } from "./ice";
 import {
   Bar, createProjectileModel, createTowerModel, createUnitModel, type TowerModel, type UnitModel,
 } from "./models";
@@ -16,6 +19,7 @@ import { emoteEl } from "../emotes";
 import { cameraFor, getTilt, onTilt, setTilt } from "../settings";
 
 interface UnitView {
+  ice?: IceShell;
   id: number;
   card: CardDef;
   team: Team;
@@ -34,9 +38,11 @@ interface UnitView {
   stepT: number;
   jumping: boolean;
   propT: number;
+  cigarT?: number;
 }
 
 interface TowerView {
+  ice?: IceShell;
   id: number;
   team: Team;
   kind: "king" | "princess";
@@ -309,6 +315,15 @@ export class GameView {
       v.active = t.a;
       if (t.hp <= 0 && !v.model.destroyed) v.model.setDestroyed();
       else if (t.hp > 0 && v.model.destroyed) v.model.restore();
+      const towerFrozen = t.fz && !v.model.destroyed;
+      if (towerFrozen && !v.ice) {
+        v.ice = new IceShell(v.kind === "king" ? 4.5 : 3.6, v.model.height * 1.12);
+        v.model.group.add(v.ice.obj);
+        frostPuff(this.fx, v.pos, v.ice.size);
+      } else if (!towerFrozen && v.ice) {
+        shatterIce(this.fx, v.ice);
+        v.ice = undefined;
+      }
     }
 
     seen.clear();
@@ -341,6 +356,7 @@ export class GameView {
     }
     for (const [id, v] of this.units) {
       if (seen.has(id)) continue;
+      if (v.ice) shatterIce(this.fx, v.ice);
       this.scene.remove(v.model.root, v.bar.group);
       this.units.delete(id);
     }
@@ -409,7 +425,7 @@ export class GameView {
         this.fx.ring(ground, col, ev.r, ev.r, ev.delay + 0.1, 0.55);
         const tex = headTexture(ev.c, col, true);
         const total = ev.delay + 0.7;
-        this.fx.sprite(tex, toWorld(ev.x, ev.y, 6.5), 0.1, total, (s, k) => {
+        const head = this.fx.sprite(tex, toWorld(ev.x, ev.y, 6.5), 0.1, total, (s, k) => {
           const t = k * total;
           const grow = Math.min(1, t / ev.delay);
           const ease = 1 + 2.2 * (grow - 1) ** 3 + 1.2 * (grow - 1) ** 2;
@@ -417,6 +433,17 @@ export class GameView {
           s.scale.setScalar(Math.max(0.05, size));
           s.material.opacity = t < ev.delay ? 1 : Math.max(0, 1 - (t - ev.delay) / 0.7);
         });
+        if (ev.c === "niels") {
+          // Le regard : les yeux s'allument puis deux rayons glacés frappent la zone.
+          const glare = new Glare(1.4);
+          const start = ev.delay * 0.4;
+          const end = ev.delay + 0.18;
+          this.fx.custom(glare.group, end, (k) => {
+            const t = k * end;
+            const a = t < start ? 0 : Math.min(1, (t - start) / 0.12) * (t > ev.delay ? Math.max(0, 1 - (t - ev.delay) / 0.18) : 1);
+            glare.update(head, this.camera, ground, a, t);
+          }, () => glare.dispose());
+        }
         break;
       }
       case "spell": {
@@ -699,6 +726,14 @@ export class GameView {
       }
 
       const frozen = v.st === UNIT_STATE.frozen;
+      if (frozen && !v.ice) {
+        v.ice = IceShell.around(m.root, m.inner);
+        frostPuff(this.fx, v.pos, v.ice.size);
+      } else if (!frozen && v.ice) {
+        shatterIce(this.fx, v.ice);
+        v.ice = undefined;
+      }
+      v.ice?.update(dt);
       const walking = !frozen && speed > 0.15 && v.st === UNIT_STATE.moving;
       if (walking) v.walk += dt * (4 + speed * 5) / Math.max(0.8, Math.sqrt(v.card.look.scale));
       const swing = walking ? Math.sin(v.walk) * 0.7 : 0;
@@ -733,6 +768,13 @@ export class GameView {
       if (m.prop) {
         v.propT = Math.max(0, v.propT - dt);
         m.prop.visible = v.propT <= 0;
+      }
+      if (hasCigar(v.card.id)) {
+        v.cigarT = (v.cigarT ?? 0) - dt;
+        if (v.cigarT <= 0 && v.st !== UNIT_STATE.deploying) {
+          v.cigarT = 0.45 + Math.random() * 0.4;
+          this.fx.smoke(cigarTip(m.head, this.camera), 1, 0xbdbdbd, 0.13);
+        }
       }
       if (m.steam) {
         v.stepT -= dt;
@@ -788,6 +830,7 @@ export class GameView {
     }
 
     for (const t of this.towers.values()) {
+      t.ice?.update(dt);
       const m = t.model;
       const alive = !m.destroyed;
       t.bar.group.visible = alive;
