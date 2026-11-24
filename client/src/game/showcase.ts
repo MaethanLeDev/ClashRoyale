@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { CARDS, type CardDef, type CardId } from "../../../shared/cards";
 import { Fx } from "./fx";
 import { getTemplate, instantiateGlb } from "./glb";
+import { cigarTip, hasCigar } from "./cigar";
 import { Glare } from "./glare";
 import { IceShell, frostPuff, shatterIce } from "./ice";
 import { createProjectileModel, createRollerModel, createUnitModel, type UnitModel } from "./models";
@@ -227,14 +228,14 @@ const ATTACKS = [3.0, 3.75];
 function unitContent(stage: Stage, card: CardDef): Content {
   const n = card.kind === "troop" ? Math.min(card.count, 3) : 1;
   const spots = n === 1 ? [[0, 0]] : n === 2 ? [[-0.6, 0], [0.6, 0]] : [[0, 0.45], [-0.85, -0.35], [0.85, -0.35]];
-  const actors: { model: UnitModel; phase: number; walk: number; attackT: number; cycle: number; fired: Set<number> }[] = [];
+  const actors: { model: UnitModel; phase: number; walk: number; attackT: number; cycle: number; fired: Set<number>; puffT: number; cigarT: number }[] = [];
   let spacing = 0;
   for (let i = 0; i < n; i++) {
     const model = createUnitModel(card.spawns ? CARDS[card.spawns[i % card.spawns.length]] : card, ALLY);
     if (i === 0) spacing = Math.max(0.9, model.barW * 0.9);
     model.root.position.set(spots[i][0] * spacing, 0, spots[i][1] * spacing);
     stage.turntable.add(model.root);
-    actors.push({ model, phase: i * 0.37, walk: i * 1.7, attackT: 0, cycle: -1, fired: new Set() });
+    actors.push({ model, phase: i * 0.37, walk: i * 1.7, attackT: 0, cycle: -1, fired: new Set(), puffT: 0, cigarT: 0 });
   }
   const { top, radius } = measure(actors.map((a) => a.model.root), Math.max(...actors.map((a) => a.model.height)));
   stage.frame(top, radius);
@@ -276,6 +277,17 @@ function unitContent(stage: Stage, card: CardDef): Content {
         }
         const walking = card.kind !== "building" && ct > 0.5 && ct < 2.6;
         animateUnit(card, m, a, dt, time, walking, a.phase);
+        // Vapeur de la machine à café et fumée du cigare de Paco.
+        a.puffT -= dt;
+        if (m.steam && a.puffT <= 0) {
+          a.puffT = 0.35 + Math.random() * 0.3;
+          stage.fx.smoke(m.steam.clone().applyMatrix4(m.root.matrixWorld), 1, 0xf4f1ea, 0.18);
+        }
+        a.cigarT -= dt;
+        if (hasCigar(card.id) && a.cigarT <= 0) {
+          a.cigarT = 0.45 + Math.random() * 0.4;
+          stage.fx.smoke(cigarTip(m.head, stage.camera), 1, 0xbdbdbd, 0.13);
+        }
         spawnPop(m, time);
       }
       for (let i = shots.length - 1; i >= 0; i--) {

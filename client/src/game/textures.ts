@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { CARDS, type CardId } from "../../../shared/cards";
+import { drawCigar, hasCigar } from "./cigar";
 
 export const ALLY = 0x3b8cff;
 export const ENEMY = 0xff4d4d;
@@ -65,6 +66,7 @@ export function headTexture(id: CardId, color: number, eyes = false): THREE.Text
   g.beginPath();
   g.arc(size / 2, size / 2, size / 2 - border + 2, 0, Math.PI * 2);
   g.stroke();
+  if (hasCigar(id)) drawCigar(g, size);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;

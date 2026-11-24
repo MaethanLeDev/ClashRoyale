@@ -6,6 +6,7 @@ import { UNIT_STATE } from "../../../shared/protocol";
 import { nearestDeployable, POCKET_DEPTH, pocketOpen } from "../../../shared/rules";
 import { buildArena, toArena, toWorld, type Arena } from "./arena";
 import { Fx } from "./fx";
+import { cigarTip, hasCigar } from "./cigar";
 import { Glare } from "./glare";
 import { frostPuff, IceShell, shatterIce } from "./ice";
 import {
@@ -37,6 +38,7 @@ interface UnitView {
   stepT: number;
   jumping: boolean;
   propT: number;
+  cigarT?: number;
 }
 
 interface TowerView {
@@ -766,6 +768,13 @@ export class GameView {
       if (m.prop) {
         v.propT = Math.max(0, v.propT - dt);
         m.prop.visible = v.propT <= 0;
+      }
+      if (hasCigar(v.card.id)) {
+        v.cigarT = (v.cigarT ?? 0) - dt;
+        if (v.cigarT <= 0 && v.st !== UNIT_STATE.deploying) {
+          v.cigarT = 0.45 + Math.random() * 0.4;
+          this.fx.smoke(cigarTip(m.head, this.camera), 1, 0xbdbdbd, 0.13);
+        }
       }
       if (m.steam) {
         v.stepT -= dt;
